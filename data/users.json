@@ -8,6 +8,22 @@
       "password_hash": "2ae05d8af9ee3d9fa290e4b43ab80aad$4cb681d5d95fbb3e5ca203c812aa482964e6777fb235ba67fa89e468e1fcef41",
       "club_id": "03918d4c-ac89-4069-9c53-4b061c5879ca",
       "updated_at": "2026-06-22T05:46:44.048537+00:00"
+    },
+    {
+      "id": "02586604-c32b-4837-8a89-d9fdfd41a0fe",
+      "created_at": "2026-06-23T11:39:11.526782+00:00",
+      "username": "Sumit Shah",
+      "email": "sumit@verigold.com",
+      "password_hash": "f7492af3cb76442010ba1a31cc122472$88a4ad8cd8354757645478401ce36c670359970b098e47022065591064ab91bb",
+      "club_id": "03918d4c-ac89-4069-9c53-4b061c5879ca"
+    },
+    {
+      "id": "7a1468d5-75e0-488d-9d94-4f55af8cc5e7",
+      "created_at": "2026-06-23T11:39:48.510129+00:00",
+      "username": "Mubasher Hassan",
+      "email": "mubasher.hassan@cltc-hcc.com",
+      "password_hash": "ebc61735f215e17f833632b6c436819c$75a495b5cffb0ea718666e23d6b17fb3b38a7b6d76e5817b43b7d21ef2e53b7c",
+      "club_id": null
     }
   ]
 }

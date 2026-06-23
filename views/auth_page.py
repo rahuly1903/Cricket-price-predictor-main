@@ -6,6 +6,23 @@ from services import auth
 
 
 def render_auth_page() -> None:
+    st.markdown(
+        """
+        <style>
+        /* Hide Register tab on login page */
+        div[data-testid="stTabs"] [data-baseweb="tab-list"] button:nth-child(2) {
+            display: none !important;
+        }
+        div[data-testid="stTabs"] [data-baseweb="tab-panel"]:nth-child(2) {
+            display: none !important;
+        }
+        div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
+            display: none !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     st.markdown("### Sign in to manage your club, teams, and players")
 
     tab_login, tab_register = st.tabs(["🔐 Login", "📝 Register"])
