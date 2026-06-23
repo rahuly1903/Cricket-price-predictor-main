@@ -13,6 +13,13 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from views.auth_page import render_auth_page
+from views.club_page import render_club_page
+from views.team_page import render_team_page
+from views.player_page import render_player_page
+from services import storage
+from services.models import TEAM_FORMATS
+
 # Load environment variables
 load_dotenv()
 
@@ -24,9 +31,15 @@ st.set_page_config(
     initial_sidebar_state="collapsed"  # We'll handle navigation ourselves
 )
 
-# Initialize session state for page navigation
+# Initialize session state for page navigation and authentication
 if 'current_page' not in st.session_state:
-    st.session_state.current_page = "🏆 Best XI Team Builder"
+    st.session_state.current_page = "🤖 Cricket AI Chatbot"
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+if 'user_id' not in st.session_state:
+    st.session_state.user_id = None
+if 'username' not in st.session_state:
+    st.session_state.username = None
 
 # COMPLETELY NEW SIDEBAR SOLUTION - Always visible custom navigation
 st.markdown("""
@@ -331,13 +344,41 @@ st.markdown("""
         font-size: 1.2rem;
     }
     
-    /* Form Styling */
+    /* Form Styling — subtle selectbox */
     .stSelectbox > div > div {
-        background: linear-gradient(135deg, #2E8B57 0%, #32CD32 100%);
-        color: white;
-        border-radius: 12px;
-        border: none;
+        background: #ffffff;
+        color: #333333;
+        border-radius: 8px;
+        border: 1px solid #d1d5db;
+        font-weight: 400;
+    }
+
+    .stSelectbox > div > div:hover {
+        border-color: #9ca3af;
+    }
+
+    .stSelectbox label {
+        color: #374151 !important;
         font-weight: 500;
+    }
+
+    /* Subtle delete-style buttons (teams page) */
+    div[data-testid="column"] .subtle-delete-btn button {
+        background: #f3f4f6 !important;
+        color: #6b7280 !important;
+        border: 1px solid #e5e7eb !important;
+        box-shadow: none !important;
+        padding: 0.25rem 0.75rem !important;
+        font-size: 0.85rem !important;
+        text-transform: none !important;
+        letter-spacing: 0 !important;
+    }
+
+    div[data-testid="column"] .subtle-delete-btn button:hover {
+        background: #fee2e2 !important;
+        color: #dc2626 !important;
+        border-color: #fecaca !important;
+        transform: none !important;
     }
     
     .stNumberInput > div > div > input,
@@ -637,26 +678,67 @@ st.markdown("""
 
 
 
-# Page selection logic 
-col1, col2, col3 = st.columns(3)
+# Navigation — public pages before login, club management after login
+AUTH_ONLY_PAGES = {"🏟️ Club Management", "🏏 Team Management", "👤 Player Management"}
 
-with col1:
-    if st.button("🤖 Cricket AI Chatbot", key="nav1", use_container_width=True, 
-                 type="primary" if st.session_state.current_page == "🤖 Cricket AI Chatbot" else "secondary"):
-        st.session_state.current_page = "🤖 Cricket AI Chatbot"
-        st.rerun()
+if st.session_state.current_page in AUTH_ONLY_PAGES and not st.session_state.authenticated:
+    st.session_state.current_page = "🔐 Login"
 
-with col2:
-    if st.button("💰 Price Predictor", key="nav2", use_container_width=True,
-                 type="primary" if st.session_state.current_page == "💰 Price Predictor" else "secondary"):
-        st.session_state.current_page = "💰 Price Predictor"
-        st.rerun()
-
-with col3:
-    if st.button("🏆 Best XI Team Builder", key="nav3", use_container_width=True,
-                 type="primary" if st.session_state.current_page == "🏆 Best XI Team Builder" else "secondary"):
-        st.session_state.current_page = "🏆 Best XI Team Builder"
-        st.rerun()
+if st.session_state.authenticated:
+    st.markdown(
+        f"<p style='text-align:right;color:#2E8B57;font-weight:600;'>👤 Logged in as <strong>{st.session_state.username}</strong></p>",
+        unsafe_allow_html=True,
+    )
+    nav_c1, nav_c2, nav_c3, nav_c4, nav_c5 = st.columns(5)
+    with nav_c1:
+        if st.button("🏟️ Club", key="nav_club", use_container_width=True,
+                     type="primary" if st.session_state.current_page == "🏟️ Club Management" else "secondary"):
+            st.session_state.current_page = "🏟️ Club Management"
+            st.rerun()
+    with nav_c2:
+        if st.button("🏏 Teams", key="nav_teams", use_container_width=True,
+                     type="primary" if st.session_state.current_page == "🏏 Team Management" else "secondary"):
+            st.session_state.current_page = "🏏 Team Management"
+            st.rerun()
+    with nav_c3:
+        if st.button("👤 Players", key="nav_players", use_container_width=True,
+                     type="primary" if st.session_state.current_page == "👤 Player Management" else "secondary"):
+            st.session_state.current_page = "👤 Player Management"
+            st.rerun()
+    with nav_c4:
+        if st.button("🏆 Best XI Team Builder", key="nav3", use_container_width=True,
+                     type="primary" if st.session_state.current_page == "🏆 Best XI Team Builder" else "secondary"):
+            st.session_state.current_page = "🏆 Best XI Team Builder"
+            st.rerun()
+    with nav_c5:
+        if st.button("🚪 Logout", key="nav_logout", use_container_width=True):
+            st.session_state.authenticated = False
+            st.session_state.user_id = None
+            st.session_state.username = None
+            st.session_state.current_page = "🤖 Cricket AI Chatbot"
+            st.rerun()
+else:
+    nav_c1, nav_c2, nav_c3, nav_c4 = st.columns(4)
+    with nav_c1:
+        if st.button("🤖 Cricket AI Chatbot", key="nav1", use_container_width=True,
+                     type="primary" if st.session_state.current_page == "🤖 Cricket AI Chatbot" else "secondary"):
+            st.session_state.current_page = "🤖 Cricket AI Chatbot"
+            st.rerun()
+    with nav_c2:
+        if st.button("💰 Price Predictor", key="nav2", use_container_width=True,
+                     type="primary" if st.session_state.current_page == "💰 Price Predictor" else "secondary"):
+            st.session_state.current_page = "💰 Price Predictor"
+            st.rerun()
+    with nav_c3:
+        if st.button("🏆 Best XI Team Builder", key="nav3", use_container_width=True,
+                     type="primary" if st.session_state.current_page == "🏆 Best XI Team Builder" else "secondary"):
+            st.session_state.current_page = "🏆 Best XI Team Builder"
+            st.rerun()
+    with nav_c4:
+        if st.button("🔐 Login", key="nav_login", use_container_width=True,
+                     type="primary" if st.session_state.current_page == "🔐 Login" else "secondary"):
+            st.session_state.current_page = "🔐 Login"
+            st.rerun()
 
 # Initialize Gemini client
 @st.cache_resource
@@ -865,9 +947,24 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# CRICKET AI CHATBOT 
+# LOGIN / REGISTER
 # ============================================================================
-if st.session_state.current_page == "🤖 Cricket AI Chatbot":
+if st.session_state.current_page == "🔐 Login":
+    render_auth_page()
+
+# ============================================================================
+# CLUB / TEAM / PLAYER (authenticated)
+# ============================================================================
+elif st.session_state.current_page == "🏟️ Club Management":
+    render_club_page(st.session_state.user_id)
+
+elif st.session_state.current_page == "🏏 Team Management":
+    render_team_page(st.session_state.user_id)
+
+elif st.session_state.current_page == "👤 Player Management":
+    render_player_page(st.session_state.user_id)
+
+elif st.session_state.current_page == "🤖 Cricket AI Chatbot":
     st.markdown("""
     <div class="feature-card fade-in">
         <h2 style="color: #2E8B57; margin-bottom: 1rem; display: flex; align-items: center; gap: 10px;">
@@ -1295,6 +1392,41 @@ elif st.session_state.current_page == "🏆 Best XI Team Builder":
     </div>
     """, unsafe_allow_html=True)
 
+    PLAYER_COLUMNS = [
+        "player_name", "role", "is_overseas",
+        "runs_scored", "innings_batted", "balls_faced", "strike_rate", "fours", "sixes",
+        "wickets", "balls_bowled", "runs_conceded", "economy", "dot_balls"
+    ]
+
+    use_club_team = False
+    selected_team_name = None
+    club_teams = []
+
+    if st.session_state.authenticated and st.session_state.user_id:
+        club = storage.get_user_club(st.session_state.user_id)
+        if club:
+            club_teams = storage.get_club_teams(club["id"])
+            if club_teams:
+                use_club_team = True
+                team_ids = [t["id"] for t in club_teams]
+
+                if "best_xi_team_id" not in st.session_state or st.session_state.best_xi_team_id not in team_ids:
+                    st.session_state.best_xi_team_id = club_teams[0]["id"]
+
+                selected_team = storage.find_by_id("teams", st.session_state.best_xi_team_id) or club_teams[0]
+                selected_team_name = selected_team["name"]
+
+                team_players = storage.get_team_players(selected_team["id"])
+                if team_players:
+                    records = [{col: p.get(col, 0) for col in PLAYER_COLUMNS} for p in team_players]
+                    st.session_state.players = pd.DataFrame(records)
+                else:
+                    st.session_state.players = pd.DataFrame(columns=PLAYER_COLUMNS)
+            else:
+                st.info("Create teams in **Team Management** to build Best XI from your club roster.")
+        else:
+            st.info("Create a club in **Club Management** to link Best XI to your teams.")
+
     # Team constraints in main area instead of sidebar
     st.markdown("### ⚙️ Team Configuration")
     
@@ -1313,16 +1445,25 @@ elif st.session_state.current_page == "🏆 Best XI Team Builder":
 
     # Session state initialization 
     if "players" not in st.session_state:
-        st.session_state.players = pd.DataFrame(columns=[
-            "player_name", "role", "is_overseas",
-            "runs_scored", "innings_batted", "balls_faced", "strike_rate", "fours", "sixes",
-            "wickets", "balls_bowled", "runs_conceded", "economy", "dot_balls"
-        ])
+        st.session_state.players = pd.DataFrame(columns=PLAYER_COLUMNS)
 
     # Impact Score function with format-specific formulas
     def compute_impact(df, format_type):
         """Calculate impact score based on format and role."""
         df = df.copy()
+
+        df["balls_faced"] = df.apply(
+            lambda x: int(round((x["runs_scored"] / x["strike_rate"]) * 100))
+            if x["balls_faced"] == 0 and x["runs_scored"] > 0 and x["strike_rate"] > 0
+            else x["balls_faced"],
+            axis=1,
+        )
+        df["balls_bowled"] = df.apply(
+            lambda x: int(round((x["runs_conceded"] / x["economy"]) * 6))
+            if x["balls_bowled"] == 0 and x["runs_conceded"] > 0 and x["economy"] > 0
+            else x["balls_bowled"],
+            axis=1,
+        )
         
         # Calculate derived metrics
         df['batting_avg'] = df.apply(
@@ -1344,6 +1485,16 @@ elif st.session_state.current_page == "🏆 Best XI Team Builder":
         df['dot_pct'] = df.apply(
             lambda x: (x['dot_balls'] / x['balls_bowled'] * 100) if x['balls_bowled'] > 0 else 0,
             axis=1
+        )
+        df['effective_balls_bowled'] = df.apply(
+            lambda x: x['balls_bowled']
+            if x['balls_bowled'] > 0
+            else ((x['runs_conceded'] / x['economy']) * 6 if x['economy'] > 0 and x['runs_conceded'] > 0 else 0),
+            axis=1,
+        )
+        df['effective_bowler_sr'] = df.apply(
+            lambda x: x['effective_balls_bowled'] / x['wickets'] if x['wickets'] > 0 else 999,
+            axis=1,
         )
         
         # Initialize impact columns
@@ -1376,17 +1527,23 @@ elif st.session_state.current_page == "🏆 Best XI Team Builder":
             if row['role'] in ['Bowler', 'All-Rounder']:
                 if row['wickets'] > 0:
                     if format_type == 'Test':
-                        # Prevent division by zero
-                        if row['bowling_avg'] > 0 and row['bowler_sr'] > 0:
+                        bowling_sr = row['bowler_sr'] if row['bowler_sr'] < 999 else row['effective_bowler_sr']
+                        if row['bowling_avg'] > 0 and bowling_sr > 0 and bowling_sr < 999:
                             df.loc[idx, 'bowling_impact'] = (
                                 (1000 / row['bowling_avg']) +
-                                ((100 / row['bowler_sr']) * 2)
+                                ((100 / bowling_sr) * 2)
                             )
-                    else:  # ODI or T20
-                        if row['economy'] > 0:
+                    elif row['economy'] > 0:
+                        if row['dot_pct'] > 0:
                             df.loc[idx, 'bowling_impact'] = (
                                 ((row['dot_pct'] * row['wickets']) / (row['economy'] ** 2)) * 100
                             )
+                        elif row['bowling_avg'] > 0:
+                            # Fallback when balls_bowled/dot_balls are missing (common in CSV imports)
+                            impact = 1000 / row['bowling_avg']
+                            if row['effective_bowler_sr'] < 999:
+                                impact += (100 / row['effective_bowler_sr']) * 2
+                            df.loc[idx, 'bowling_impact'] = impact
         
         # Total Impact - For All-Rounders, use average
         df['impact'] = df.apply(
@@ -1398,169 +1555,190 @@ elif st.session_state.current_page == "🏆 Best XI Team Builder":
         return df
 
     
-    # Input section
+    # Input section — manual player management for guests only
     col1, col2 = st.columns([3, 1])
     
     with col1:
-        st.markdown("### 📋 Player Database Management")
-        
-        # Format selector
-        format_type = st.selectbox(
-            "🏏 Cricket Format",
-            options=["T20", "ODI", "Test"],
-            index=0,
-            help="Select format - impact formulas will adjust automatically"
-        )
-        st.markdown("---")
-        
-        # File upload 
-        uploaded = st.file_uploader(
-            "📁 Upload Player Data (CSV)",
-            type=["csv"],
-            help="Upload a CSV file with player statistics"
-        )
-
-        if uploaded:
-            df = pd.read_csv(uploaded)
-            st.session_state.players = df
-            st.success(f" Successfully loaded {len(df)} players from CSV file!")
+        if use_club_team:
+            st.markdown("### 📋 Player Pool")
+            player_count = len(st.session_state.players)
+            if player_count:
+                st.info(f"Loaded **{player_count}** players from **{selected_team_name}**")
+            else:
+                st.warning(f"No players assigned to **{selected_team_name}**. Assign players in Player Management.")
+            st.caption("Use **Quick Actions** on the right to switch club teams.")
+            format_type = st.selectbox(
+                "🏏 Cricket Format",
+                options=TEAM_FORMATS,
+                index=0,
+                help="Select format for Best XI optimization",
+                key="best_xi_format_club",
+            )
+        else:
+            st.markdown("### 📋 Player Database Management")
             
-            # Show data preview
-            with st.expander("👀 Preview Uploaded Data", expanded=True):
-                st.dataframe(df.head(), use_container_width=True)
-        
-        # Manual player addition with dynamic fields based on role
-        with st.expander("➕ Add Individual Player", expanded=len(st.session_state.players) == 0):
-            with st.form("add_player_form"):
-                st.markdown("**Player Information**")
-                
-                # Basic info
-                form_col1, form_col2 = st.columns(2)
-                with form_col1:
-                    name = st.text_input("🏏 Player Name", placeholder="e.g., MS Dhoni")
-                    role = st.selectbox("👤 Role", ["Batsman", "Bowler", "All-Rounder", "Wicketkeeper"])
-                with form_col2:
-                    overseas = st.checkbox("🌍 Overseas Player")
-                
-                # Batting fields (Visible for all roles)
-                st.markdown("**📊 Batting Statistics**")
-                bcol1, bcol2, bcol3 = st.columns(3)
-                with bcol1:
-                    runs = st.number_input("🏃‍♂️ Runs Scored", 0, 50000, 0)
-                    innings = st.number_input("📈 Innings Batted", 0, 1000, 0)
-                with bcol2:
-                    balls_faced = st.number_input("⚾ Balls Faced", 0, 50000, 0)
-                    sr = st.number_input("⚡ Strike Rate", 0.0, 300.0, 0.0)
-                with bcol3:
-                    fours = st.number_input("4️⃣ Fours", 0, 2000, 0)
-                    sixes = st.number_input("6️⃣ Sixes", 0, 2000, 0)
-                
-                # Bowling fields (Visible for all roles)
-                st.markdown("**🎳 Bowling Statistics**")
-                bowcol1, bowcol2, bowcol3 = st.columns(3)
-                with bowcol1:
-                    wkts = st.number_input("🎯 Wickets", 0, 1000, 0)
-                    balls_bowled = st.number_input("⚾ Balls Bowled", 0, 5000, 0)
-                with bowcol2:
-                    runs_conceded = st.number_input("🏃 Runs Conceded", 0, 5000, 0)
-                    eco = st.number_input("📊 Economy", 0.0, 200.0, 0.0)
-                with bowcol3:
-                    dot_balls = st.number_input("⏹️ Dot Balls", 0, 5000, 0)
+            # Format selector
+            format_type = st.selectbox(
+                "🏏 Cricket Format",
+                options=["T20", "ODI", "Test"],
+                index=0,
+                help="Select format - impact formulas will adjust automatically"
+            )
+            st.markdown("---")
+            
+            # File upload 
+            uploaded = st.file_uploader(
+                "📁 Upload Player Data (CSV)",
+                type=["csv"],
+                help="Upload a CSV file with player statistics"
+            )
 
-                if st.form_submit_button(" Add Player", use_container_width=True):
-                    if name.strip():
-                        new_row = pd.DataFrame([{
-                            "player_name": name, "role": role, "is_overseas": 1 if overseas else 0,
-                            "runs_scored": runs, "innings_batted": innings, "balls_faced": balls_faced,
-                            "strike_rate": sr, "fours": fours, "sixes": sixes,
-                            "wickets": wkts, "balls_bowled": balls_bowled, "runs_conceded": runs_conceded,
-                            "economy": eco, "dot_balls": dot_balls
-                        }])
-                        st.session_state.players = pd.concat([st.session_state.players, new_row], ignore_index=True)
-                        st.success(f"🎉 Added {name}!")
-                        st.rerun()
-                    else:
-                        st.error(" Please enter a player name!")
+            if uploaded:
+                df = pd.read_csv(uploaded)
+                st.session_state.players = df
+                st.success(f" Successfully loaded {len(df)} players from CSV file!")
+                
+                # Show data preview
+                with st.expander("👀 Preview Uploaded Data", expanded=True):
+                    st.dataframe(df.head(), use_container_width=True)
+            
+            # Manual player addition with dynamic fields based on role
+            with st.expander("➕ Add Individual Player", expanded=len(st.session_state.players) == 0):
+                with st.form("add_player_form"):
+                    st.markdown("**Player Information**")
+                    
+                    # Basic info
+                    form_col1, form_col2 = st.columns(2)
+                    with form_col1:
+                        name = st.text_input("🏏 Player Name", placeholder="e.g., MS Dhoni")
+                        role = st.selectbox("👤 Role", ["Batsman", "Bowler", "All-Rounder", "Wicketkeeper"])
+                    with form_col2:
+                        overseas = st.checkbox("🌍 Overseas Player")
+                    
+                    # Batting fields (Visible for all roles)
+                    st.markdown("**📊 Batting Statistics**")
+                    bcol1, bcol2, bcol3 = st.columns(3)
+                    with bcol1:
+                        runs = st.number_input("🏃‍♂️ Runs Scored", 0, 50000, 0)
+                        innings = st.number_input("📈 Innings Batted", 0, 1000, 0)
+                    with bcol2:
+                        balls_faced = st.number_input("⚾ Balls Faced", 0, 50000, 0)
+                        sr = st.number_input("⚡ Strike Rate", 0.0, 300.0, 0.0)
+                    with bcol3:
+                        fours = st.number_input("4️⃣ Fours", 0, 2000, 0)
+                        sixes = st.number_input("6️⃣ Sixes", 0, 2000, 0)
+                    
+                    # Bowling fields (Visible for all roles)
+                    st.markdown("**🎳 Bowling Statistics**")
+                    bowcol1, bowcol2, bowcol3 = st.columns(3)
+                    with bowcol1:
+                        wkts = st.number_input("🎯 Wickets", 0, 1000, 0)
+                        balls_bowled = st.number_input("⚾ Balls Bowled", 0, 5000, 0)
+                    with bowcol2:
+                        runs_conceded = st.number_input("🏃 Runs Conceded", 0, 5000, 0)
+                        eco = st.number_input("📊 Economy", 0.0, 200.0, 0.0)
+                    with bowcol3:
+                        dot_balls = st.number_input("⏹️ Dot Balls", 0, 5000, 0)
+
+                    if st.form_submit_button(" Add Player", use_container_width=True):
+                        if name.strip():
+                            new_row = pd.DataFrame([{
+                                "player_name": name, "role": role, "is_overseas": 1 if overseas else 0,
+                                "runs_scored": runs, "innings_batted": innings, "balls_faced": balls_faced,
+                                "strike_rate": sr, "fours": fours, "sixes": sixes,
+                                "wickets": wkts, "balls_bowled": balls_bowled, "runs_conceded": runs_conceded,
+                                "economy": eco, "dot_balls": dot_balls
+                            }])
+                            st.session_state.players = pd.concat([st.session_state.players, new_row], ignore_index=True)
+                            st.success(f"🎉 Added {name}!")
+                            st.rerun()
+                        else:
+                            st.error(" Please enter a player name!")
 
 
     with col2:
-        st.markdown("### ⚡ Quick Actions")
-        
-        # Load ODI Players
-        if st.button("📊 Load ODI Players", use_container_width=True, help="Load ODI player data"):
-            try:
-                import json
-                with open('ODI_output.json', 'r') as f:
-                    odi_data = json.load(f)
-                
-                # Map role names to match app format
-                role_mapping = {
-                    'Batter': 'Batsman',
-                    'Allrounder': 'All-Rounder',
-                    'Bowler': 'Bowler',
-                    'All Rounder': 'All-Rounder'
-                }
-                
-                for player in odi_data:
-                    player['role'] = role_mapping.get(player['role'], player['role'])
-                
-                odi_players = pd.DataFrame(odi_data)
-                st.session_state.players = pd.concat([st.session_state.players, odi_players], ignore_index=True)
-                st.success(f" Loaded {len(odi_players)} ODI players!")
-                st.rerun()
-            except FileNotFoundError:
-                st.error(" ODI_output.json not found!")
-            except Exception as e:
-                st.error(f" Error loading ODI data: {e}")
-        
-        # Load Test Players
-        if st.button("🏏 Load Test Players", use_container_width=True, help="Load Test player data"):
-            try:
-                import json
-                with open('test_output.json', 'r') as f:
-                    test_data = json.load(f)
-                
-                # Map role names to match app format
-                role_mapping = {
-                    'Batsman': 'Batsman',
-                    'All Rounder': 'All-Rounder',
-                    'Bowler': 'Bowler'
-                }
-                
-                for player in test_data:
-                    player['role'] = role_mapping.get(player['role'], player['role'])
-                
-                test_players = pd.DataFrame(test_data)
-                st.session_state.players = pd.concat([st.session_state.players, test_players], ignore_index=True)
-                st.success(f" Loaded {len(test_players)} Test players!")
-                st.rerun()
-            except FileNotFoundError:
-                st.error(" test_output.json not found!")
-            except Exception as e:
-                st.error(f" Error loading Test data: {e}")
-        
-        
-        # Clear database button
-        if st.button("🗑️ Clear Database", use_container_width=True, help="Remove all players from database"):
-            st.session_state.players = pd.DataFrame(columns=[
-                "player_name", "role", "is_overseas",
-                "runs_scored", "innings_batted", "balls_faced", "strike_rate", "fours", "sixes",
-                "wickets", "balls_bowled", "runs_conceded", "economy", "dot_balls"
-            ])
-            st.success("🗑️ Player database cleared!")
-            st.rerun()
-        
-        # Database stats
-        if not st.session_state.players.empty:
-            st.markdown("### 📊 Database Stats")
-            total_players = len(st.session_state.players)
-            overseas_count = st.session_state.players['is_overseas'].sum()
+        if use_club_team and club_teams:
+            st.markdown("### ⚡ Quick Actions")
+            st.caption("Load players from a club team")
+            for team in club_teams:
+                team_player_count = len(storage.get_team_players(team["id"]))
+                is_active = team["id"] == st.session_state.best_xi_team_id
+                label = f"{'✅ ' if is_active else '🏏 '}{team['name']} ({team_player_count})"
+                if st.button(
+                    label,
+                    key=f"load_xi_team_{team['id']}",
+                    use_container_width=True,
+                    type="primary" if is_active else "secondary",
+                ):
+                    st.session_state.best_xi_team_id = team["id"]
+                    st.rerun()
+        elif not use_club_team:
+            st.markdown("### ⚡ Quick Actions")
             
-            col_stat1, col_stat2 = st.columns(2)
-            with col_stat1:
-                st.metric("Total Players", total_players)
-            with col_stat2:
-                st.metric("Overseas Players", overseas_count)
+            if st.button("📊 Load ODI Players", use_container_width=True, help="Load ODI player data"):
+                try:
+                    import json
+                    with open('ODI_output.json', 'r') as f:
+                        odi_data = json.load(f)
+                    
+                    role_mapping = {
+                        'Batter': 'Batsman',
+                        'Allrounder': 'All-Rounder',
+                        'Bowler': 'Bowler',
+                        'All Rounder': 'All-Rounder'
+                    }
+                    
+                    for player in odi_data:
+                        player['role'] = role_mapping.get(player['role'], player['role'])
+                    
+                    odi_players = pd.DataFrame(odi_data)
+                    st.session_state.players = pd.concat([st.session_state.players, odi_players], ignore_index=True)
+                    st.success(f" Loaded {len(odi_players)} ODI players!")
+                    st.rerun()
+                except FileNotFoundError:
+                    st.error(" ODI_output.json not found!")
+                except Exception as e:
+                    st.error(f" Error loading ODI data: {e}")
+            
+            if st.button("🏏 Load Test Players", use_container_width=True, help="Load Test player data"):
+                try:
+                    import json
+                    with open('test_output.json', 'r') as f:
+                        test_data = json.load(f)
+                    
+                    role_mapping = {
+                        'Batsman': 'Batsman',
+                        'All Rounder': 'All-Rounder',
+                        'Bowler': 'Bowler'
+                    }
+                    
+                    for player in test_data:
+                        player['role'] = role_mapping.get(player['role'], player['role'])
+                    
+                    test_players = pd.DataFrame(test_data)
+                    st.session_state.players = pd.concat([st.session_state.players, test_players], ignore_index=True)
+                    st.success(f" Loaded {len(test_players)} Test players!")
+                    st.rerun()
+                except FileNotFoundError:
+                    st.error(" test_output.json not found!")
+                except Exception as e:
+                    st.error(f" Error loading Test data: {e}")
+            
+            if st.button("🗑️ Clear Database", use_container_width=True, help="Remove all players from database"):
+                st.session_state.players = pd.DataFrame(columns=PLAYER_COLUMNS)
+                st.success("🗑️ Player database cleared!")
+                st.rerun()
+            
+            if not st.session_state.players.empty:
+                st.markdown("### 📊 Database Stats")
+                total_players = len(st.session_state.players)
+                overseas_count = st.session_state.players['is_overseas'].sum()
+                
+                col_stat1, col_stat2 = st.columns(2)
+                with col_stat1:
+                    st.metric("Total Players", total_players)
+                with col_stat2:
+                    st.metric("Overseas Players", overseas_count)
 
     # Enhanced current player pool display
     if not st.session_state.players.empty:

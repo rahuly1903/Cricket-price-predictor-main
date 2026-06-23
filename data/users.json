@@ -1,0 +1,13 @@
+{
+  "users": [
+    {
+      "id": "a8ab88a9-6394-41ed-8836-9ea81c6f2a67",
+      "created_at": "2026-06-22T05:45:44.005024+00:00",
+      "username": "Rahul",
+      "email": "rahuly1903@gmail.com",
+      "password_hash": "2ae05d8af9ee3d9fa290e4b43ab80aad$4cb681d5d95fbb3e5ca203c812aa482964e6777fb235ba67fa89e468e1fcef41",
+      "club_id": "03918d4c-ac89-4069-9c53-4b061c5879ca",
+      "updated_at": "2026-06-22T05:46:44.048537+00:00"
+    }
+  ]
+}

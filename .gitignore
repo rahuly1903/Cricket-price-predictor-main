@@ -1,0 +1,16 @@
+# Environment
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Data files with user credentials (keep structure, ignore populated data in production)
+# Uncomment the line below if you don't want to commit user data:
+# data/users.json
+
+# OS
+.DS_Store

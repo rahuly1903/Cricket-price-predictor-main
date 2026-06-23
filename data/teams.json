@@ -1,0 +1,29 @@
+{
+  "teams": [
+    {
+      "id": "e52ae0f6-41ab-4a37-9dce-6279882589d3",
+      "created_at": "2026-06-23T08:29:00.557307+00:00",
+      "club_id": "03918d4c-ac89-4069-9c53-4b061c5879ca",
+      "name": "HCC Mens",
+      "description": "",
+      "format": "T20"
+    },
+    {
+      "id": "3f55bd70-4e23-4e5b-b845-dc410a348297",
+      "created_at": "2026-06-23T08:29:10.803565+00:00",
+      "club_id": "03918d4c-ac89-4069-9c53-4b061c5879ca",
+      "name": "HCC Womens",
+      "description": "",
+      "format": "T20"
+    },
+    {
+      "id": "77b6b554-58f5-4e86-821f-8124bd158f69",
+      "created_at": "2026-06-23T08:29:21.460172+00:00",
+      "club_id": "03918d4c-ac89-4069-9c53-4b061c5879ca",
+      "name": "HCC Junior",
+      "description": "",
+      "format": "T20",
+      "updated_at": "2026-06-23T08:51:32.398818+00:00"
+    }
+  ]
+}
