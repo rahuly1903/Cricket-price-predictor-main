@@ -2,6 +2,8 @@
 
 import streamlit as st
 
+from services.club_context import ClubContext
+
 
 def show_flash() -> None:
     flash = st.session_state.pop("flash_message", None)
@@ -46,3 +48,28 @@ def render_tab_selector(session_key: str, tabs: list[tuple[str, str]], default: 
                     st.rerun()
 
     return st.session_state[session_key]
+
+
+def render_club_selector(ctx: ClubContext, key_suffix: str = "default") -> dict | None:
+    """Render a club dropdown and keep the active club in session state."""
+    clubs = ctx.get_clubs()
+    if not clubs:
+        return None
+
+    club_names = [club["name"] for club in clubs]
+    active = ctx.get_active_club()
+    default_index = club_names.index(active["name"]) if active and active["name"] in club_names else 0
+
+    selected_name = st.selectbox(
+        "Select Club",
+        club_names,
+        index=default_index,
+        key=f"club_selector_{key_suffix}",
+    )
+    selected = next(club for club in clubs if club["name"] == selected_name)
+
+    if ctx.get_active_club_id() != selected["id"]:
+        ctx.set_active_club_id(selected["id"])
+        st.rerun()
+
+    return selected

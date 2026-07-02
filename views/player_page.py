@@ -3,7 +3,7 @@
 import pandas as pd
 import streamlit as st
 
-from services import storage
+from services.club_context import ClubContext
 from services.models import CSV_FIELDS, NUMERIC_PLAYER_FIELDS, PLAYER_FIELDS, PLAYER_ROLES
 from views.ui_helpers import render_tab_selector, set_flash, show_flash
 
@@ -31,6 +31,7 @@ SAMPLE_CSV_ROWS = [
         "runs_conceded": 0,
         "economy": 0.0,
         "dot_balls": 0,
+        "club": "Mumbai Strikers",
         "team": "First XI",
     },
     {
@@ -48,6 +49,7 @@ SAMPLE_CSV_ROWS = [
         "runs_conceded": 2400,
         "economy": 4.8,
         "dot_balls": 1200,
+        "club": "Mumbai Strikers",
         "team": "",
     },
 ]
@@ -72,6 +74,30 @@ def _resolve_team_id(team_name: str, team_options: dict[str, str]) -> tuple[str 
     return None, f"Unknown team '{name}'. Leave blank to keep unassigned."
 
 
+def _resolve_club_id(
+    club_name: str,
+    ctx: ClubContext,
+    default_club_id: str | None,
+) -> tuple[str | None, str | None]:
+    name = str(club_name).strip()
+    if not name or name.lower() in {"nan", "none"}:
+        if default_club_id:
+            return default_club_id, None
+        return None, "Club is required. Add a club column or select an active club."
+
+    club = ctx.find_club_by_name(name)
+    if club:
+        return club["id"], None
+    return None, f"Unknown club '{name}'. Create the club in Club Management first."
+
+
+def _read_uploaded_table(uploaded) -> pd.DataFrame:
+    filename = uploaded.name.lower()
+    if filename.endswith((".xlsx", ".xls")):
+        return pd.read_excel(uploaded)
+    return pd.read_csv(uploaded)
+
+
 def _derive_balls_bowled_if_missing(payload: dict) -> None:
     """Estimate balls_bowled from runs_conceded and economy when not provided."""
     if payload["balls_bowled"] == 0 and payload["runs_conceded"] > 0 and payload["economy"] > 0:
@@ -92,6 +118,7 @@ def _derive_missing_stats(payload: dict) -> None:
 def _validate_player_row(
     row: dict,
     club_id: str,
+    ctx: ClubContext,
     team_id: str | None = None,
     exclude_player_id: str | None = None,
     auto_derive_stats: bool = False,
@@ -104,14 +131,14 @@ def _validate_player_row(
     if role not in PLAYER_ROLES:
         return None, f"Invalid role '{role}'. Must be one of: {', '.join(PLAYER_ROLES)}."
 
-    for player in storage.get_club_players(club_id):
+    for player in ctx.get_club_players(club_id):
         if exclude_player_id and player.get("id") == exclude_player_id:
             continue
         if player.get("player_name", "").lower() == name.lower():
             return None, f"Player '{name}' already exists in this club."
 
     if team_id:
-        for player in storage.get_team_players(team_id):
+        for player in ctx.get_team_players(team_id):
             if exclude_player_id and player.get("id") == exclude_player_id:
                 continue
             if player.get("player_name", "").lower() == name.lower():
@@ -209,29 +236,52 @@ def _team_label(team_id: str | None, team_options: dict[str, str]) -> str:
     return "Unknown"
 
 
-def render_player_page(user_id: str) -> None:
+def render_players_for_club(club: dict, ctx: ClubContext) -> None:
+    """Render player list and details for a club (used inline on club page)."""
+    players = ctx.get_club_players(club["id"])
+    if not players:
+        st.info("No players yet for this club.")
+        return
+
+    teams = ctx.get_club_teams(club["id"])
+    team_options = {team["name"]: team["id"] for team in teams}
+    team_names = list(team_options.keys())
+    team_assignment_options = [UNASSIGNED_LABEL] + team_names
+
+    for player in players:
+        _render_player_accordion(
+            player,
+            club["id"],
+            team_options,
+            team_assignment_options,
+            ctx,
+        )
+
+
+def render_player_page(user_id: str | None = None) -> None:
+    ctx = ClubContext(user_id)
+
     st.markdown(
         """
         <div class="feature-card fade-in">
             <h2 style="color: #2E8B57;">👤 Player Management</h2>
-            <p style="color: #666;">Add, edit, and assign players. Each player can belong to one team only.</p>
+            <p style="color: #666;">Add, edit, and assign players across your clubs. Each player belongs to one club and one team.</p>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    club = storage.get_user_club(user_id)
-    if not club:
+    clubs = ctx.get_clubs()
+    if not clubs:
         st.warning("You need to create a club first.")
         if st.button("Go to Club Management", type="primary"):
             st.session_state.current_page = "🏟️ Club Management"
             st.rerun()
         return
 
-    teams = storage.get_club_teams(club["id"])
-    team_options = {team["name"]: team["id"] for team in teams}
-    team_names = list(team_options.keys())
-    team_assignment_options = [UNASSIGNED_LABEL] + team_names
+    club = ctx.get_active_club()
+    if not club:
+        return
 
     show_flash()
 
@@ -267,17 +317,16 @@ def render_player_page(user_id: str) -> None:
     )
 
     active_tab = render_tab_selector("player_active_tab", PLAYER_TABS, default="list")
-    players = storage.get_club_players(club["id"])
 
     if active_tab == "add":
-        _render_add_player(club["id"])
+        _render_add_player(club["id"], ctx)
     elif active_tab == "csv":
-        _render_csv_import(club["id"], team_options)
+        _render_csv_import(club["id"], ctx)
     else:
-        _render_player_list(club["id"], players, team_options, team_names, team_assignment_options)
+        _render_player_list(club, ctx, clubs)
 
 
-def _render_add_player(club_id: str) -> None:
+def _render_add_player(club_id: str, ctx: ClubContext) -> None:
     st.info("New players are created without a team. Assign them to a team from the All Players tab.")
 
     with st.form("add_player_form"):
@@ -285,21 +334,23 @@ def _render_add_player(club_id: str) -> None:
         submitted = st.form_submit_button("Add Player", use_container_width=True, type="primary")
 
         if submitted:
-            payload, error = _validate_player_row(form_data, club_id, team_id=None)
+            payload, error = _validate_player_row(form_data, club_id, ctx, team_id=None)
             if error:
                 st.error(error)
             else:
-                storage.create_record("players", payload)
+                ctx.create_player(payload)
                 st.session_state.player_active_tab = "list"
                 set_flash("success", f"Player '{payload['player_name']}' saved successfully!")
                 st.rerun()
 
 
-def _render_csv_import(club_id: str, team_options: dict[str, str]) -> None:
-    st.markdown("### Upload Players via CSV")
+def _render_csv_import(default_club_id: str, ctx: ClubContext) -> None:
+    st.markdown("### Upload Players via CSV or Excel")
     st.markdown(
-        "Download the sample CSV, fill in your player data, then upload it. "
-        "Use the **team** column at the end to assign players (leave blank to keep unassigned). "
+        "Download the sample file, fill in your player data, then upload it. "
+        "Use the **club** column to assign players to different clubs in one upload. "
+        "If **club** is blank, the currently selected club is used. "
+        "Use the **team** column to assign players to a team within that club (leave blank to keep unassigned). "
         "If **balls_faced** is 0 but **runs_scored** and **strike_rate** are provided, balls faced are calculated automatically. "
         "If **balls_bowled** is 0 but **runs_conceded** and **economy** are provided, balls bowled are calculated automatically."
     )
@@ -312,37 +363,54 @@ def _render_csv_import(club_id: str, team_options: dict[str, str]) -> None:
         use_container_width=True,
     )
 
-    uploaded = st.file_uploader("Upload Player CSV", type=["csv"], key="player_csv_upload")
+    uploaded = st.file_uploader(
+        "Upload Player CSV or Excel",
+        type=["csv", "xlsx", "xls"],
+        key="player_csv_upload",
+    )
 
     if uploaded:
         try:
-            df = pd.read_csv(uploaded)
+            df = _read_uploaded_table(uploaded)
         except Exception as exc:
-            st.error(f"Could not read CSV: {exc}")
+            st.error(f"Could not read file: {exc}")
             return
 
         missing = [col for col in PLAYER_FIELDS if col not in df.columns]
         if missing:
-            st.error(f"CSV is missing required columns: {', '.join(missing)}")
+            st.error(f"File is missing required columns: {', '.join(missing)}")
         else:
             st.dataframe(df.head(), use_container_width=True)
-            if st.button("Import Players from CSV", type="primary", use_container_width=True):
+            if st.button("Import Players", type="primary", use_container_width=True):
                 success_count = 0
                 errors = []
+                has_club_column = "club" in df.columns
+
                 for index, row in df.iterrows():
                     row_dict = row.to_dict()
+                    club_id, club_error = _resolve_club_id(
+                        row_dict.get("club", "") if has_club_column else "",
+                        ctx,
+                        default_club_id,
+                    )
+                    if club_error:
+                        errors.append(f"Row {index + 2}: {club_error}")
+                        continue
+
+                    club_teams = ctx.get_club_teams(club_id)
+                    team_options = {team["name"]: team["id"] for team in club_teams}
                     team_id, team_error = _resolve_team_id(row_dict.get("team", ""), team_options)
                     if team_error:
                         errors.append(f"Row {index + 2}: {team_error}")
                         continue
 
                     payload, error = _validate_player_row(
-                        row_dict, club_id, team_id=team_id, auto_derive_stats=True
+                        row_dict, club_id, ctx, team_id=team_id, auto_derive_stats=True
                     )
                     if error:
                         errors.append(f"Row {index + 2}: {error}")
                     else:
-                        storage.create_record("players", payload)
+                        ctx.create_player(payload)
                         success_count += 1
 
                 if success_count:
@@ -359,12 +427,16 @@ def _render_player_accordion(
     club_id: str,
     team_options: dict[str, str],
     team_assignment_options: list[str],
+    ctx: ClubContext,
+    club_name: str | None = None,
 ) -> None:
     player_id = player["id"]
     team_name = _team_label(player.get("team_id"), team_options)
     overseas = "Overseas" if player.get("is_overseas") else "Local"
-
-    with st.expander(f"🏏 {player.get('player_name')} — {player.get('role')} | {team_name} | {overseas}"):
+    club_label = f" | {club_name}" if club_name else ""
+    with st.expander(
+        f"🏏 {player.get('player_name')} — {player.get('role')} | {team_name} | {overseas}{club_label}"
+    ):
         current_team_label = team_name if team_name in team_assignment_options else UNASSIGNED_LABEL
 
         with st.form(f"edit_player_{player_id}"):
@@ -385,7 +457,7 @@ def _render_player_accordion(
             if save:
                 new_team_id = None if new_team == UNASSIGNED_LABEL else team_options.get(new_team)
                 if new_team_id:
-                    for other in storage.get_team_players(new_team_id):
+                    for other in ctx.get_team_players(new_team_id):
                         if (
                             other.get("id") != player_id
                             and other.get("player_name", "").lower() == form_data["player_name"].lower()
@@ -396,13 +468,14 @@ def _render_player_accordion(
                 payload, error = _validate_player_row(
                     form_data,
                     club_id,
+                    ctx,
                     team_id=new_team_id,
                     exclude_player_id=player_id,
                 )
                 if error:
                     st.error(error)
                 else:
-                    storage.update_record("players", player_id, payload)
+                    ctx.update_player(player_id, payload)
                     st.session_state.player_active_tab = "list"
                     set_flash("success", f"Player '{payload['player_name']}' saved successfully!")
                     st.rerun()
@@ -423,17 +496,15 @@ def _render_player_accordion(
             )
         with action_col2:
             if st.button("Delete", key=f"delete_player_{player_id}", type="secondary", use_container_width=True):
-                storage.delete_record("players", player_id)
+                ctx.delete_player(player_id)
                 set_flash("success", f"Player '{player.get('player_name')}' deleted.")
                 st.rerun()
 
 
 def _render_player_list(
-    club_id: str,
-    players: list[dict],
-    team_options: dict[str, str],
-    team_names: list[str],
-    team_assignment_options: list[str],
+    active_club: dict,
+    ctx: ClubContext,
+    clubs: list[dict],
 ) -> None:
     csv_errors = st.session_state.pop("csv_import_errors", None)
     if csv_errors:
@@ -441,20 +512,67 @@ def _render_player_list(
         for err in csv_errors:
             st.write(f"- {err}")
 
+    club_options = {club["name"]: club for club in clubs}
+    view_options = ["All Clubs", active_club["name"]] + [
+        name for name in club_options if name != active_club["name"]
+    ]
+    view_club = st.selectbox("View players from", view_options, key="filter_club")
+
+    if view_club == "All Clubs":
+        players = ctx.get_all_players()
+        show_club_name = True
+    else:
+        selected = club_options[view_club]
+        players = ctx.get_club_players(selected["id"])
+        show_club_name = False
+
     if not players:
-        st.info("No players yet. Add players manually or via CSV.")
+        st.info("No players yet. Add players manually or via CSV/Excel.")
         return
 
-    filter_options = ["All Teams", UNASSIGNED_LABEL] + team_names
+    club_name_by_id = {club["id"]: club["name"] for club in clubs}
+
+    filter_options = ["All Teams", UNASSIGNED_LABEL]
+    if view_club != "All Clubs":
+        team_options = {team["name"]: team["id"] for team in ctx.get_club_teams(club_options[view_club]["id"])}
+        filter_options.extend(team_options.keys())
+    else:
+        team_options = {}
+
     filter_team = st.selectbox("Filter by team", filter_options, key="filter_team")
     filtered = players
     if filter_team == UNASSIGNED_LABEL:
         filtered = [p for p in players if not p.get("team_id")]
     elif filter_team != "All Teams":
-        team_id = team_options[filter_team]
-        filtered = [p for p in players if p.get("team_id") == team_id]
+        if view_club == "All Clubs":
+            filtered = [
+                p
+                for p in players
+                if p.get("team_id")
+                and _team_label(p.get("team_id"), {
+                    team["name"]: team["id"]
+                    for team in ctx.get_club_teams(p.get("club_id", ""))
+                }) == filter_team
+            ]
+        else:
+            team_id = team_options[filter_team]
+            filtered = [p for p in players if p.get("team_id") == team_id]
 
     st.markdown(f"**{len(filtered)} player(s)** — expand a player below to edit or assign to a team.")
 
     for player in filtered:
-        _render_player_accordion(player, club_id, team_options, team_assignment_options)
+        player_club_id = player.get("club_id", active_club["id"])
+        player_teams = ctx.get_club_teams(player_club_id)
+        player_team_options = {team["name"]: team["id"] for team in player_teams}
+        player_team_names = list(player_team_options.keys())
+        player_team_assignment = [UNASSIGNED_LABEL] + player_team_names
+        club_name = club_name_by_id.get(player_club_id) if show_club_name else None
+
+        _render_player_accordion(
+            player,
+            player_club_id,
+            player_team_options,
+            player_team_assignment,
+            ctx,
+            club_name=club_name,
+        )

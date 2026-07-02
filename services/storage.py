@@ -100,11 +100,52 @@ def delete_record(collection: str, record_id: str) -> bool:
     return True
 
 
-def get_user_club(user_id: str) -> dict[str, Any] | None:
+def get_user_clubs(user_id: str) -> list[dict[str, Any]]:
+    """All clubs owned by the user, plus any legacy club linked on the user record."""
+    clubs_by_id: dict[str, dict[str, Any]] = {}
+    for club in get_all("clubs"):
+        if club.get("owner_user_id") == user_id:
+            clubs_by_id[club["id"]] = club
+
     user = find_by_id("users", user_id)
-    if not user or not user.get("club_id"):
-        return None
-    return find_by_id("clubs", user["club_id"])
+    if user and user.get("club_id"):
+        legacy = find_by_id("clubs", user["club_id"])
+        if legacy:
+            clubs_by_id.setdefault(legacy["id"], legacy)
+
+    return sorted(clubs_by_id.values(), key=lambda club: club.get("created_at", ""))
+
+
+def get_user_club(user_id: str) -> dict[str, Any] | None:
+    """Return the user's most recently linked club, or their first owned club."""
+    user = find_by_id("users", user_id)
+    if user and user.get("club_id"):
+        club = find_by_id("clubs", user["club_id"])
+        if club:
+            return club
+
+    clubs = get_user_clubs(user_id)
+    return clubs[0] if clubs else None
+
+
+def find_club_by_name_for_user(user_id: str, name: str) -> dict[str, Any] | None:
+    name_lower = name.strip().lower()
+    for club in get_user_clubs(user_id):
+        if club.get("name", "").lower() == name_lower:
+            return club
+    return None
+
+
+def club_name_exists_for_user(
+    user_id: str, name: str, exclude_club_id: str | None = None
+) -> bool:
+    name_lower = name.strip().lower()
+    for club in get_user_clubs(user_id):
+        if exclude_club_id and club.get("id") == exclude_club_id:
+            continue
+        if club.get("name", "").lower() == name_lower:
+            return True
+    return False
 
 
 def get_club_teams(club_id: str) -> list[dict[str, Any]]:

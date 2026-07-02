@@ -1,0 +1,32 @@
+{
+  "clubs": [
+    {
+      "id": "1e28298f-0487-46cf-8b46-23fb77d44853",
+      "created_at": "2026-07-02T04:23:18.050532+00:00",
+      "name": "Jharkhand",
+      "description": "",
+      "owner_user_id": null
+    },
+    {
+      "id": "76174394-f4b8-4686-8c86-e8687a2d87a2",
+      "created_at": "2026-07-02T04:23:32.396559+00:00",
+      "name": "Madhya Pradesh",
+      "description": "",
+      "owner_user_id": null
+    },
+    {
+      "id": "66ae9052-60ac-4651-be04-b371b49997eb",
+      "created_at": "2026-07-02T04:24:12.852847+00:00",
+      "name": "Tamil Nadu",
+      "description": "",
+      "owner_user_id": null
+    },
+    {
+      "id": "47cc98a0-5dc7-4b46-8301-a3ab7cc0a326",
+      "created_at": "2026-07-02T04:24:34.339311+00:00",
+      "name": "Telangana",
+      "description": "",
+      "owner_user_id": null
+    }
+  ]
+}

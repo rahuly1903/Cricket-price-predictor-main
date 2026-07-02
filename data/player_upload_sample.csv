@@ -1,3 +1,3 @@
-player_name,role,is_overseas,runs_scored,innings_batted,balls_faced,strike_rate,fours,sixes,wickets,balls_bowled,runs_conceded,economy,dot_balls,team
-Virat Kohli,Batsman,0,8000,200,0,133.3,700,250,0,0,0,0.0,0,First XI
-Jasprit Bumrah,Bowler,0,50,20,40,125.0,2,1,150,0,2400,4.8,1200,
+player_name,role,is_overseas,runs_scored,innings_batted,balls_faced,strike_rate,fours,sixes,wickets,balls_bowled,runs_conceded,economy,dot_balls,club,team
+Virat Kohli,Batsman,0,8000,200,0,133.3,700,250,0,0,0,0.0,0,Mumbai Strikers,First XI
+Jasprit Bumrah,Bowler,0,50,20,40,125.0,2,1,150,0,2400,4.8,1200,Mumbai Strikers,

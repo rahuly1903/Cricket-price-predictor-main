@@ -22,7 +22,7 @@ PLAYER_FIELDS = [
     "dot_balls",
 ]
 
-CSV_FIELDS = PLAYER_FIELDS + ["team"]
+CSV_FIELDS = PLAYER_FIELDS + ["club", "team"]
 
 NUMERIC_PLAYER_FIELDS = [
     "is_overseas",

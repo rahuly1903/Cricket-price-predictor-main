@@ -2,22 +2,44 @@
 
 import streamlit as st
 
-from services import storage
+from services.club_context import ClubContext
 from views.ui_helpers import render_tab_selector, set_flash, show_flash
 
 
-def render_team_page(user_id: str) -> None:
-    st.markdown(
-        """
-        <div class="feature-card fade-in">
-            <h2 style="color: #2E8B57;">🏏 Team Management</h2>
-            <p style="color: #666;">Create and manage cricket teams within your club.</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+def render_teams_for_club(club_id: str, ctx: ClubContext) -> None:
+    """Render team list and details for a club (used inline on club page)."""
+    teams = ctx.get_club_teams(club_id)
+    if not teams:
+        st.info("No teams yet for this club.")
+        return
+    _render_team_accordions(teams, club_id, ctx)
 
-    club = storage.get_user_club(user_id)
+
+def render_team_page(user_id: str | None = None) -> None:
+    ctx = ClubContext(user_id)
+
+    if ctx.is_guest:
+        st.markdown(
+            """
+            <div class="feature-card fade-in">
+                <h2 style="color: #2E8B57;">🏏 Team Management</h2>
+                <p style="color: #666;">Create and manage cricket teams across your clubs.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            """
+            <div class="feature-card fade-in">
+                <h2 style="color: #2E8B57;">🏏 Team Management</h2>
+                <p style="color: #666;">Create and manage cricket teams across your clubs.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    club = ctx.get_active_club()
     if not club:
         st.warning("You need to create a club first.")
         if st.button("Go to Club Management", type="primary"):
@@ -25,8 +47,7 @@ def render_team_page(user_id: str) -> None:
             st.rerun()
         return
 
-    st.caption(f"Club: **{club['name']}**")
-    teams = storage.get_club_teams(club["id"])
+    teams = ctx.get_club_teams(club["id"])
 
     show_flash()
 
@@ -83,12 +104,12 @@ def render_team_page(user_id: str) -> None:
     )
 
     if active_tab == "create":
-        _render_create_team(club)
+        _render_create_team(club, ctx)
     else:
-        _render_team_accordions(teams, club["id"])
+        _render_team_accordions(teams, club["id"], ctx)
 
 
-def _render_create_team(club: dict) -> None:
+def _render_create_team(club: dict, ctx: ClubContext) -> None:
     with st.form("create_team_form"):
         name = st.text_input("Team Name", placeholder="e.g., First XI")
         description = st.text_area("Description", placeholder="Optional team description")
@@ -97,29 +118,22 @@ def _render_create_team(club: dict) -> None:
         if submitted:
             if not name.strip():
                 st.error("Team name is required.")
-            elif storage.team_name_exists(club["id"], name.strip()):
+            elif ctx.team_name_exists(club["id"], name.strip()):
                 st.error(f"A team named '{name.strip()}' already exists in this club.")
             else:
-                storage.create_record(
-                    "teams",
-                    {
-                        "club_id": club["id"],
-                        "name": name.strip(),
-                        "description": description.strip(),
-                    },
-                )
+                ctx.create_team(club["id"], name.strip(), description.strip())
                 st.session_state.team_active_tab = "list"
                 set_flash("success", f"Team '{name.strip()}' saved successfully!")
                 st.rerun()
 
 
-def _render_team_accordions(teams: list[dict], club_id: str) -> None:
+def _render_team_accordions(teams: list[dict], club_id: str, ctx: ClubContext) -> None:
     if not teams:
         st.info("No teams yet. Create your first team using the Create Team tab.")
         return
 
     for team in teams:
-        players = storage.get_team_players(team["id"])
+        players = ctx.get_team_players(team["id"])
         player_count = len(players)
         player_preview = ", ".join(p.get("player_name", "") for p in players[:5])
         if player_count > 5:
@@ -130,10 +144,10 @@ def _render_team_accordions(teams: list[dict], club_id: str) -> None:
             expander_label += f" — {player_preview}"
 
         with st.expander(expander_label, expanded=False):
-            _render_team_details(team, club_id, players)
+            _render_team_details(team, club_id, players, ctx)
 
 
-def _render_team_details(team: dict, club_id: str, players: list[dict]) -> None:
+def _render_team_details(team: dict, club_id: str, players: list[dict], ctx: ClubContext) -> None:
     team_id = team["id"]
 
     with st.form(f"edit_team_{team_id}"):
@@ -144,11 +158,10 @@ def _render_team_details(team: dict, club_id: str, players: list[dict]) -> None:
         if save:
             if not name.strip():
                 st.error("Team name cannot be empty.")
-            elif storage.team_name_exists(club_id, name.strip(), exclude_team_id=team_id):
+            elif ctx.team_name_exists(club_id, name.strip(), exclude_team_id=team_id):
                 st.error(f"A team named '{name.strip()}' already exists in this club.")
             else:
-                storage.update_record(
-                    "teams",
+                ctx.update_team(
                     team_id,
                     {
                         "name": name.strip(),
@@ -175,7 +188,7 @@ def _render_team_details(team: dict, club_id: str, players: list[dict]) -> None:
                     type="secondary",
                     use_container_width=True,
                 ):
-                    storage.update_record("players", player["id"], {"team_id": None})
+                    ctx.update_player(player["id"], {"team_id": None})
                     set_flash("success", f"Player '{player.get('player_name')}' removed from team.")
                     st.rerun()
 
@@ -184,7 +197,7 @@ def _render_team_details(team: dict, club_id: str, players: list[dict]) -> None:
         if players:
             st.error("Cannot delete a team that has players. Remove players from the team first.")
         else:
-            storage.delete_record("teams", team_id)
+            ctx.delete_team(team_id)
             st.session_state.team_active_tab = "list"
             set_flash("success", f"Team '{team['name']}' deleted.")
             st.rerun()

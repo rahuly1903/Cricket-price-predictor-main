@@ -678,11 +678,10 @@ st.markdown("""
 
 
 
-# Navigation — public pages before login, club management after login
-AUTH_ONLY_PAGES = {"🏟️ Club Management", "🏏 Team Management", "👤 Player Management"}
+# Navigation — public pages use guest JSON storage; logged-in users use account data
+def _management_user_id() -> str | None:
+    return st.session_state.user_id if st.session_state.authenticated else None
 
-if st.session_state.current_page in AUTH_ONLY_PAGES and not st.session_state.authenticated:
-    st.session_state.current_page = "🔐 Login"
 
 if st.session_state.authenticated:
     st.markdown(
@@ -718,7 +717,7 @@ if st.session_state.authenticated:
             st.session_state.current_page = "🤖 Cricket AI Chatbot"
             st.rerun()
 else:
-    nav_c1, nav_c2, nav_c3, nav_c4 = st.columns(4)
+    nav_c1, nav_c2, nav_c3, nav_c4, nav_c5, nav_c6, nav_c7 = st.columns(7)
     with nav_c1:
         if st.button("🤖 Cricket AI Chatbot", key="nav1", use_container_width=True,
                      type="primary" if st.session_state.current_page == "🤖 Cricket AI Chatbot" else "secondary"):
@@ -730,11 +729,26 @@ else:
             st.session_state.current_page = "💰 Price Predictor"
             st.rerun()
     with nav_c3:
+        if st.button("🏟️ Club", key="nav_guest_club", use_container_width=True,
+                     type="primary" if st.session_state.current_page == "🏟️ Club Management" else "secondary"):
+            st.session_state.current_page = "🏟️ Club Management"
+            st.rerun()
+    with nav_c4:
+        if st.button("🏏 Teams", key="nav_guest_teams", use_container_width=True,
+                     type="primary" if st.session_state.current_page == "🏏 Team Management" else "secondary"):
+            st.session_state.current_page = "🏏 Team Management"
+            st.rerun()
+    with nav_c5:
+        if st.button("👤 Players", key="nav_guest_players", use_container_width=True,
+                     type="primary" if st.session_state.current_page == "👤 Player Management" else "secondary"):
+            st.session_state.current_page = "👤 Player Management"
+            st.rerun()
+    with nav_c6:
         if st.button("🏆 Best XI Team Builder", key="nav3", use_container_width=True,
                      type="primary" if st.session_state.current_page == "🏆 Best XI Team Builder" else "secondary"):
             st.session_state.current_page = "🏆 Best XI Team Builder"
             st.rerun()
-    with nav_c4:
+    with nav_c7:
         if st.button("🔐 Login", key="nav_login", use_container_width=True,
                      type="primary" if st.session_state.current_page == "🔐 Login" else "secondary"):
             st.session_state.current_page = "🔐 Login"
@@ -956,13 +970,13 @@ if st.session_state.current_page == "🔐 Login":
 # CLUB / TEAM / PLAYER (authenticated)
 # ============================================================================
 elif st.session_state.current_page == "🏟️ Club Management":
-    render_club_page(st.session_state.user_id)
+    render_club_page(_management_user_id())
 
 elif st.session_state.current_page == "🏏 Team Management":
-    render_team_page(st.session_state.user_id)
+    render_team_page(_management_user_id())
 
 elif st.session_state.current_page == "👤 Player Management":
-    render_player_page(st.session_state.user_id)
+    render_player_page(_management_user_id())
 
 elif st.session_state.current_page == "🤖 Cricket AI Chatbot":
     st.markdown("""
@@ -1398,34 +1412,72 @@ elif st.session_state.current_page == "🏆 Best XI Team Builder":
         "wickets", "balls_bowled", "runs_conceded", "economy", "dot_balls"
     ]
 
-    use_club_team = False
-    selected_team_name = None
+    use_club_data = False
+    selected_source_label = None
     club_teams = []
 
-    if st.session_state.authenticated and st.session_state.user_id:
-        club = storage.get_user_club(st.session_state.user_id)
-        if club:
-            club_teams = storage.get_club_teams(club["id"])
-            if club_teams:
-                use_club_team = True
-                team_ids = [t["id"] for t in club_teams]
+    from services.club_context import ClubContext
 
-                if "best_xi_team_id" not in st.session_state or st.session_state.best_xi_team_id not in team_ids:
-                    st.session_state.best_xi_team_id = club_teams[0]["id"]
+    xi_ctx = ClubContext(st.session_state.user_id if st.session_state.authenticated else None)
+    user_clubs = xi_ctx.get_clubs()
+    all_teams = []
+    for user_club in user_clubs:
+        for team in xi_ctx.get_club_teams(user_club["id"]):
+            all_teams.append({**team, "club_id": user_club["id"], "club_name": user_club["name"]})
 
-                selected_team = storage.find_by_id("teams", st.session_state.best_xi_team_id) or club_teams[0]
-                selected_team_name = selected_team["name"]
+    club_ids = [c["id"] for c in user_clubs]
+    team_ids = [t["id"] for t in all_teams]
 
-                team_players = storage.get_team_players(selected_team["id"])
+    if "best_xi_source" not in st.session_state:
+        st.session_state.best_xi_source = None
+
+    source = st.session_state.best_xi_source
+    if source:
+        source_type, source_id = source
+        if source_type == "club" and source_id not in club_ids:
+            st.session_state.best_xi_source = None
+            source = None
+        elif source_type == "team" and source_id not in team_ids:
+            st.session_state.best_xi_source = None
+            source = None
+
+    if user_clubs:
+        use_club_data = True
+        club_teams = all_teams
+
+        if not st.session_state.best_xi_source:
+            if all_teams:
+                st.session_state.best_xi_source = ("team", all_teams[0]["id"])
+            else:
+                st.session_state.best_xi_source = ("club", user_clubs[0]["id"])
+
+        source_type, source_id = st.session_state.best_xi_source
+        if source_type == "club":
+            club = xi_ctx.get_club_by_id(source_id) or user_clubs[0]
+            club_players = xi_ctx.get_club_players(club["id"])
+            selected_source_label = club["name"]
+            if club_players:
+                records = [{col: p.get(col, 0) for col in PLAYER_COLUMNS} for p in club_players]
+                st.session_state.players = pd.DataFrame(records)
+            else:
+                st.session_state.players = pd.DataFrame(columns=PLAYER_COLUMNS)
+        else:
+            selected_team = next((t for t in all_teams if t["id"] == source_id), all_teams[0] if all_teams else None)
+            if selected_team:
+                selected_source_label = f"{selected_team.get('club_name', '')} — {selected_team['name']}"
+                team_players = xi_ctx.get_team_players(selected_team["id"])
                 if team_players:
                     records = [{col: p.get(col, 0) for col in PLAYER_COLUMNS} for p in team_players]
                     st.session_state.players = pd.DataFrame(records)
                 else:
                     st.session_state.players = pd.DataFrame(columns=PLAYER_COLUMNS)
             else:
-                st.info("Create teams in **Team Management** to build Best XI from your club roster.")
-        else:
-            st.info("Create a club in **Club Management** to link Best XI to your teams.")
+                club = user_clubs[0]
+                st.session_state.best_xi_source = ("club", club["id"])
+                selected_source_label = club["name"]
+                st.session_state.players = pd.DataFrame(columns=PLAYER_COLUMNS)
+    elif st.session_state.authenticated:
+        st.info("Create a club in **Club Management** to link Best XI to your clubs.")
 
     # Team constraints in main area instead of sidebar
     st.markdown("### ⚙️ Team Configuration")
@@ -1559,14 +1611,14 @@ elif st.session_state.current_page == "🏆 Best XI Team Builder":
     col1, col2 = st.columns([3, 1])
     
     with col1:
-        if use_club_team:
+        if use_club_data:
             st.markdown("### 📋 Player Pool")
             player_count = len(st.session_state.players)
             if player_count:
-                st.info(f"Loaded **{player_count}** players from **{selected_team_name}**")
+                st.info(f"Loaded **{player_count}** players from **{selected_source_label}**")
             else:
-                st.warning(f"No players assigned to **{selected_team_name}**. Assign players in Player Management.")
-            st.caption("Use **Quick Actions** on the right to switch club teams.")
+                st.warning(f"No players found for **{selected_source_label}**. Add players in Player Management.")
+            st.caption("Use **Quick Actions** on the right to load players by club or team.")
             format_type = st.selectbox(
                 "🏏 Cricket Format",
                 options=TEAM_FORMATS,
@@ -1657,22 +1709,37 @@ elif st.session_state.current_page == "🏆 Best XI Team Builder":
 
 
     with col2:
-        if use_club_team and club_teams:
+        if use_club_data and user_clubs:
             st.markdown("### ⚡ Quick Actions")
-            st.caption("Load players from a club team")
-            for team in club_teams:
-                team_player_count = len(storage.get_team_players(team["id"]))
-                is_active = team["id"] == st.session_state.best_xi_team_id
-                label = f"{'✅ ' if is_active else '🏏 '}{team['name']} ({team_player_count})"
+            st.caption("Load players from a club or team")
+
+            for club in user_clubs:
+                club_player_count = len(xi_ctx.get_club_players(club["id"]))
+                is_club_active = st.session_state.best_xi_source == ("club", club["id"])
+                club_label = f"{'✅ ' if is_club_active else '🏟️ '}{club['name']} ({club_player_count} players)"
                 if st.button(
-                    label,
-                    key=f"load_xi_team_{team['id']}",
+                    club_label,
+                    key=f"load_xi_club_{club['id']}",
                     use_container_width=True,
-                    type="primary" if is_active else "secondary",
+                    type="primary" if is_club_active else "secondary",
                 ):
-                    st.session_state.best_xi_team_id = team["id"]
+                    st.session_state.best_xi_source = ("club", club["id"])
                     st.rerun()
-        elif not use_club_team:
+
+                club_team_list = [t for t in club_teams if t.get("club_id") == club["id"]]
+                for team in club_team_list:
+                    team_player_count = len(xi_ctx.get_team_players(team["id"]))
+                    is_team_active = st.session_state.best_xi_source == ("team", team["id"])
+                    team_label = f"{'✅ ' if is_team_active else '↳ 🏏'} {team['name']} ({team_player_count})"
+                    if st.button(
+                        team_label,
+                        key=f"load_xi_team_{team['id']}",
+                        use_container_width=True,
+                        type="primary" if is_team_active else "secondary",
+                    ):
+                        st.session_state.best_xi_source = ("team", team["id"])
+                        st.rerun()
+        elif not use_club_data:
             st.markdown("### ⚡ Quick Actions")
             
             if st.button("📊 Load ODI Players", use_container_width=True, help="Load ODI player data"):
