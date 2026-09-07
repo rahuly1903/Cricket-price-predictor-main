@@ -17,6 +17,7 @@ from views.auth_page import render_auth_page
 from views.club_page import render_club_page
 from views.team_page import render_team_page
 from views.player_page import render_player_page
+from views.ui_helpers import set_selected_team_id
 from services import storage
 from services.models import TEAM_FORMATS
 
@@ -692,16 +693,21 @@ if st.session_state.authenticated:
     with nav_c1:
         if st.button("🏟️ Club", key="nav_club", use_container_width=True,
                      type="primary" if st.session_state.current_page == "🏟️ Club Management" else "secondary"):
+            set_selected_team_id(None)
             st.session_state.current_page = "🏟️ Club Management"
             st.rerun()
     with nav_c2:
         if st.button("🏏 Teams", key="nav_teams", use_container_width=True,
                      type="primary" if st.session_state.current_page == "🏏 Team Management" else "secondary"):
+            set_selected_team_id(None)
+            st.session_state.team_active_tab = "list"
             st.session_state.current_page = "🏏 Team Management"
             st.rerun()
     with nav_c3:
         if st.button("👤 Players", key="nav_players", use_container_width=True,
                      type="primary" if st.session_state.current_page == "👤 Player Management" else "secondary"):
+            set_selected_team_id(None)
+            st.session_state.player_active_tab = "list"
             st.session_state.current_page = "👤 Player Management"
             st.rerun()
     with nav_c4:
@@ -731,16 +737,21 @@ else:
     with nav_c3:
         if st.button("🏟️ Club", key="nav_guest_club", use_container_width=True,
                      type="primary" if st.session_state.current_page == "🏟️ Club Management" else "secondary"):
+            set_selected_team_id(None)
             st.session_state.current_page = "🏟️ Club Management"
             st.rerun()
     with nav_c4:
         if st.button("🏏 Teams", key="nav_guest_teams", use_container_width=True,
                      type="primary" if st.session_state.current_page == "🏏 Team Management" else "secondary"):
+            set_selected_team_id(None)
+            st.session_state.team_active_tab = "list"
             st.session_state.current_page = "🏏 Team Management"
             st.rerun()
     with nav_c5:
         if st.button("👤 Players", key="nav_guest_players", use_container_width=True,
                      type="primary" if st.session_state.current_page == "👤 Player Management" else "secondary"):
+            set_selected_team_id(None)
+            st.session_state.player_active_tab = "list"
             st.session_state.current_page = "👤 Player Management"
             st.rerun()
     with nav_c6:

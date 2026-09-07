@@ -5,7 +5,15 @@ import streamlit as st
 
 from services.club_context import ClubContext
 from services.models import CSV_FIELDS, NUMERIC_PLAYER_FIELDS, PLAYER_FIELDS, PLAYER_ROLES
-from views.ui_helpers import render_tab_selector, set_flash, show_flash
+from views.ui_helpers import (
+    PAGE_CLUB,
+    PAGE_TEAM,
+    get_selected_team_id,
+    render_tab_selector,
+    set_flash,
+    set_selected_team_id,
+    show_flash,
+)
 
 PLAYER_TABS = [
     ("list", "📋 All Players"),
@@ -258,30 +266,77 @@ def render_players_for_club(club: dict, ctx: ClubContext) -> None:
         )
 
 
+def _resolve_selected_team(club: dict, ctx: ClubContext) -> dict | None:
+    """Return the selected team if it still belongs to the active club."""
+    team_id = get_selected_team_id()
+    if not team_id:
+        return None
+    for team in ctx.get_club_teams(club["id"]):
+        if team["id"] == team_id:
+            return team
+    set_selected_team_id(None)
+    return None
+
+
 def render_player_page(user_id: str | None = None) -> None:
     ctx = ClubContext(user_id)
 
-    st.markdown(
-        """
-        <div class="feature-card fade-in">
-            <h2 style="color: #2E8B57;">👤 Player Management</h2>
-            <p style="color: #666;">Add, edit, and assign players across your clubs. Each player belongs to one club and one team.</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
     clubs = ctx.get_clubs()
     if not clubs:
+        st.markdown(
+            """
+            <div class="feature-card fade-in">
+                <h2 style="color: #2E8B57;">👤 Player Management</h2>
+                <p style="color: #666;">Add, edit, and assign players across your clubs.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
         st.warning("You need to create a club first.")
         if st.button("Go to Club Management", type="primary"):
-            st.session_state.current_page = "🏟️ Club Management"
+            st.session_state.current_page = PAGE_CLUB
             st.rerun()
         return
 
     club = ctx.get_active_club()
     if not club:
         return
+
+    selected_team = _resolve_selected_team(club, ctx)
+
+    if selected_team:
+        st.markdown(
+            f"""
+            <div class="feature-card fade-in">
+                <h2 style="color: #2E8B57;">🏏 {selected_team['name']}</h2>
+                <p style="color: #666;">Players in this team · Club: {club['name']}</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if selected_team.get("description"):
+            st.caption(selected_team["description"])
+        back_col, clear_col = st.columns([1, 1])
+        with back_col:
+            if st.button("← Back to Teams", use_container_width=True):
+                set_selected_team_id(None)
+                st.session_state.current_page = PAGE_TEAM
+                st.session_state.team_active_tab = "list"
+                st.rerun()
+        with clear_col:
+            if st.button("View all club players", use_container_width=True):
+                set_selected_team_id(None)
+                st.rerun()
+    else:
+        st.markdown(
+            f"""
+            <div class="feature-card fade-in">
+                <h2 style="color: #2E8B57;">👤 Player Management</h2>
+                <p style="color: #666;">Players for <strong>{club['name']}</strong>. Add, edit, and assign players to teams.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     show_flash()
 
@@ -319,22 +374,25 @@ def render_player_page(user_id: str | None = None) -> None:
     active_tab = render_tab_selector("player_active_tab", PLAYER_TABS, default="list")
 
     if active_tab == "add":
-        _render_add_player(club["id"], ctx)
+        _render_add_player(club["id"], ctx, default_team_id=selected_team["id"] if selected_team else None)
     elif active_tab == "csv":
         _render_csv_import(club["id"], ctx)
     else:
-        _render_player_list(club, ctx, clubs)
+        _render_player_list(club, ctx, clubs, selected_team=selected_team)
 
 
-def _render_add_player(club_id: str, ctx: ClubContext) -> None:
-    st.info("New players are created without a team. Assign them to a team from the All Players tab.")
+def _render_add_player(club_id: str, ctx: ClubContext, default_team_id: str | None = None) -> None:
+    if default_team_id:
+        st.info("New players will be assigned to the selected team.")
+    else:
+        st.info("New players are created without a team. Assign them to a team from the All Players tab.")
 
     with st.form("add_player_form"):
         form_data = _player_form_fields("add")
         submitted = st.form_submit_button("Add Player", use_container_width=True, type="primary")
 
         if submitted:
-            payload, error = _validate_player_row(form_data, club_id, ctx, team_id=None)
+            payload, error = _validate_player_row(form_data, club_id, ctx, team_id=default_team_id)
             if error:
                 st.error(error)
             else:
@@ -505,12 +563,36 @@ def _render_player_list(
     active_club: dict,
     ctx: ClubContext,
     clubs: list[dict],
+    selected_team: dict | None = None,
 ) -> None:
     csv_errors = st.session_state.pop("csv_import_errors", None)
     if csv_errors:
         st.error("Some rows could not be imported:")
         for err in csv_errors:
             st.write(f"- {err}")
+
+    club_name_by_id = {club["id"]: club["name"] for club in clubs}
+
+    # Team-scoped view (navigated from Teams tab)
+    if selected_team:
+        players = ctx.get_team_players(selected_team["id"])
+        if not players:
+            st.info(f"No players on **{selected_team['name']}** yet. Use **Add Player** to add one.")
+            return
+
+        team_options = {team["name"]: team["id"] for team in ctx.get_club_teams(active_club["id"])}
+        team_assignment_options = [UNASSIGNED_LABEL] + list(team_options.keys())
+        st.markdown(f"**{len(players)} player(s)** on this team — expand a player to edit.")
+
+        for player in players:
+            _render_player_accordion(
+                player,
+                active_club["id"],
+                team_options,
+                team_assignment_options,
+                ctx,
+            )
+        return
 
     club_options = {club["name"]: club for club in clubs}
     view_options = ["All Clubs", active_club["name"]] + [
@@ -530,8 +612,6 @@ def _render_player_list(
         st.info("No players yet. Add players manually or via CSV/Excel.")
         return
 
-    club_name_by_id = {club["id"]: club["name"] for club in clubs}
-
     filter_options = ["All Teams", UNASSIGNED_LABEL]
     if view_club != "All Clubs":
         team_options = {team["name"]: team["id"] for team in ctx.get_club_teams(club_options[view_club]["id"])}
@@ -549,10 +629,14 @@ def _render_player_list(
                 p
                 for p in players
                 if p.get("team_id")
-                and _team_label(p.get("team_id"), {
-                    team["name"]: team["id"]
-                    for team in ctx.get_club_teams(p.get("club_id", ""))
-                }) == filter_team
+                and _team_label(
+                    p.get("team_id"),
+                    {
+                        team["name"]: team["id"]
+                        for team in ctx.get_club_teams(p.get("club_id", ""))
+                    },
+                )
+                == filter_team
             ]
         else:
             team_id = team_options[filter_team]

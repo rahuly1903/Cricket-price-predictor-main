@@ -3,19 +3,11 @@
 import streamlit as st
 
 from services.club_context import ClubContext
-from views.player_page import render_players_for_club
-from views.team_page import render_teams_for_club
-from views.ui_helpers import render_tab_selector, set_flash, show_flash
+from views.ui_helpers import navigate_to_teams, render_tab_selector, set_flash, show_flash
 
 
 def _toggle_session_flag(key: str) -> None:
     st.session_state[key] = not st.session_state.get(key, False)
-
-
-def _set_inline_panel(club_id: str, panel: str | None) -> None:
-    panel_key = f"club_inline_panel_{club_id}"
-    current = st.session_state.get(panel_key)
-    st.session_state[panel_key] = None if current == panel else panel
 
 
 def render_club_page(user_id: str | None = None) -> None:
@@ -92,89 +84,62 @@ def _render_club_list(clubs: list[dict], ctx: ClubContext) -> None:
         return
 
     st.markdown(f"### Your Clubs ({len(clubs)})")
+    st.caption("Click a club to open its teams. Use Edit to change club details.")
 
     for club in clubs:
         teams = ctx.get_club_teams(club["id"])
         players = ctx.get_club_players(club["id"])
         is_active = ctx.get_active_club_id() == club["id"]
-        label = f"{'✅ ' if is_active else '🏟️ '}{club['name']} — {len(teams)} team(s), {len(players)} player(s)"
+        edit_visible_key = f"edit_club_visible_{club['id']}"
 
-        with st.expander(label, expanded=is_active):
-            edit_visible_key = f"edit_club_visible_{club['id']}"
-            panel_key = f"club_inline_panel_{club['id']}"
+        open_col, edit_col = st.columns([10, 1])
+        with open_col:
+            label = f"{'✅ ' if is_active else '🏟️ '}{club['name']} — {len(teams)} team(s), {len(players)} player(s)"
+            if st.button(
+                label,
+                key=f"open_club_{club['id']}",
+                use_container_width=True,
+                type="primary" if is_active else "secondary",
+            ):
+                navigate_to_teams(ctx, club["id"])
+        with edit_col:
+            if st.button("✏️", key=f"toggle_edit_{club['id']}", help="Edit club details"):
+                _toggle_session_flag(edit_visible_key)
+                st.rerun()
 
-            title_col, edit_col = st.columns([10, 1])
-            with title_col:
-                st.markdown(f"### {club['name']}")
-                if club.get("description"):
-                    st.caption(club["description"])
-            with edit_col:
-                if st.button("✏️", key=f"toggle_edit_{club['id']}", help="Edit club details"):
-                    _toggle_session_flag(edit_visible_key)
-                    st.rerun()
+        if club.get("description") and not st.session_state.get(edit_visible_key):
+            st.caption(club["description"])
 
-            if st.session_state.get(edit_visible_key):
-                with st.form(f"edit_club_{club['id']}"):
-                    new_name = st.text_input("Club Name", value=club.get("name", ""), key=f"club_name_{club['id']}")
-                    new_description = st.text_area(
-                        "Description", value=club.get("description", ""), key=f"club_desc_{club['id']}"
-                    )
-                    save = st.form_submit_button("Save Changes", use_container_width=True, type="primary")
+        if st.session_state.get(edit_visible_key):
+            with st.form(f"edit_club_{club['id']}"):
+                new_name = st.text_input("Club Name", value=club.get("name", ""), key=f"club_name_{club['id']}")
+                new_description = st.text_area(
+                    "Description", value=club.get("description", ""), key=f"club_desc_{club['id']}"
+                )
+                save = st.form_submit_button("Save Changes", use_container_width=True, type="primary")
 
-                    if save:
-                        if not new_name.strip():
-                            st.error("Club name cannot be empty.")
-                        elif ctx.club_name_exists(new_name.strip(), exclude_club_id=club["id"]):
-                            st.error(f"A club named '{new_name.strip()}' already exists.")
-                        else:
-                            ctx.update_club(
-                                club["id"],
-                                {"name": new_name.strip(), "description": new_description.strip()},
-                            )
-                            set_flash("success", "Club saved successfully!")
-                            st.rerun()
+                if save:
+                    if not new_name.strip():
+                        st.error("Club name cannot be empty.")
+                    elif ctx.club_name_exists(new_name.strip(), exclude_club_id=club["id"]):
+                        st.error(f"A club named '{new_name.strip()}' already exists.")
+                    else:
+                        ctx.update_club(
+                            club["id"],
+                            {"name": new_name.strip(), "description": new_description.strip()},
+                        )
+                        set_flash("success", "Club saved successfully!")
+                        st.rerun()
 
-                if ctx.can_delete_club(club):
-                    st.markdown("---")
-                    if st.checkbox(
-                        "I understand this will delete this club, its teams, and its players",
-                        key=f"confirm_delete_{club['id']}",
-                    ):
-                        if st.button(f"Delete {club['name']}", key=f"delete_club_{club['id']}", type="secondary"):
-                            ctx.delete_club(club["id"])
-                            set_flash("warning", f"Club '{club['name']}' deleted.")
-                            st.rerun()
-
-            action_col1, action_col2 = st.columns(2)
-            with action_col1:
-                teams_active = st.session_state.get(panel_key) == "teams"
-                if st.button(
-                    "👥 Hide Teams" if teams_active else "👥 Manage Teams",
-                    key=f"teams_{club['id']}",
-                    use_container_width=True,
-                    type="primary" if teams_active else "secondary",
-                ):
-                    ctx.set_active_club_id(club["id"])
-                    _set_inline_panel(club["id"], "teams")
-                    st.rerun()
-            with action_col2:
-                players_active = st.session_state.get(panel_key) == "players"
-                if st.button(
-                    "🧑‍🤝‍🧑 Hide Players" if players_active else "🧑‍🤝‍🧑 Manage Players",
-                    key=f"players_{club['id']}",
-                    use_container_width=True,
-                    type="primary" if players_active else "secondary",
-                ):
-                    ctx.set_active_club_id(club["id"])
-                    _set_inline_panel(club["id"], "players")
-                    st.rerun()
-
-            inline_panel = st.session_state.get(panel_key)
-            if inline_panel == "teams":
+            if ctx.can_delete_club(club):
                 st.markdown("---")
-                st.markdown("#### Teams")
-                render_teams_for_club(club["id"], ctx)
-            elif inline_panel == "players":
-                st.markdown("---")
-                st.markdown("#### Players")
-                render_players_for_club(club, ctx)
+                if st.checkbox(
+                    "I understand this will delete this club, its teams, and its players",
+                    key=f"confirm_delete_{club['id']}",
+                ):
+                    if st.button(f"Delete {club['name']}", key=f"delete_club_{club['id']}", type="secondary"):
+                        ctx.delete_club(club["id"])
+                        set_flash("warning", f"Club '{club['name']}' deleted.")
+                        st.rerun()
+
+        st.markdown("---")

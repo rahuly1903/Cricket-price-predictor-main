@@ -3,7 +3,13 @@
 import streamlit as st
 
 from services.club_context import ClubContext
-from views.ui_helpers import render_tab_selector, set_flash, show_flash
+from views.ui_helpers import (
+    PAGE_CLUB,
+    navigate_to_players,
+    render_tab_selector,
+    set_flash,
+    show_flash,
+)
 
 
 def render_teams_for_club(club_id: str, ctx: ClubContext) -> None:
@@ -12,40 +18,42 @@ def render_teams_for_club(club_id: str, ctx: ClubContext) -> None:
     if not teams:
         st.info("No teams yet for this club.")
         return
-    _render_team_accordions(teams, club_id, ctx)
+    _render_team_accordions(teams, club_id, ctx, navigate_on_click=False)
 
 
 def render_team_page(user_id: str | None = None) -> None:
     ctx = ClubContext(user_id)
 
-    if ctx.is_guest:
-        st.markdown(
-            """
-            <div class="feature-card fade-in">
-                <h2 style="color: #2E8B57;">🏏 Team Management</h2>
-                <p style="color: #666;">Create and manage cricket teams across your clubs.</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    else:
-        st.markdown(
-            """
-            <div class="feature-card fade-in">
-                <h2 style="color: #2E8B57;">🏏 Team Management</h2>
-                <p style="color: #666;">Create and manage cricket teams across your clubs.</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
     club = ctx.get_active_club()
     if not club:
+        st.markdown(
+            """
+            <div class="feature-card fade-in">
+                <h2 style="color: #2E8B57;">🏏 Team Management</h2>
+                <p style="color: #666;">Create and manage cricket teams across your clubs.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
         st.warning("You need to create a club first.")
         if st.button("Go to Club Management", type="primary"):
-            st.session_state.current_page = "🏟️ Club Management"
+            st.session_state.current_page = PAGE_CLUB
             st.rerun()
         return
+
+    club_title = club["name"]
+    st.markdown(
+        f"""
+        <div class="feature-card fade-in">
+            <h2 style="color: #2E8B57;">🏟️ {club_title}</h2>
+            <p style="color: #666;">Teams for this club. Click a team to view its players, or create a new team.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if club.get("description"):
+        st.caption(club["description"])
 
     teams = ctx.get_club_teams(club["id"])
 
@@ -106,10 +114,11 @@ def render_team_page(user_id: str | None = None) -> None:
     if active_tab == "create":
         _render_create_team(club, ctx)
     else:
-        _render_team_accordions(teams, club["id"], ctx)
+        _render_team_accordions(teams, club["id"], ctx, navigate_on_click=True)
 
 
 def _render_create_team(club: dict, ctx: ClubContext) -> None:
+    st.markdown(f"### Add Team to {club['name']}")
     with st.form("create_team_form"):
         name = st.text_input("Team Name", placeholder="e.g., First XI")
         description = st.text_area("Description", placeholder="Optional team description")
@@ -127,10 +136,19 @@ def _render_create_team(club: dict, ctx: ClubContext) -> None:
                 st.rerun()
 
 
-def _render_team_accordions(teams: list[dict], club_id: str, ctx: ClubContext) -> None:
+def _render_team_accordions(
+    teams: list[dict],
+    club_id: str,
+    ctx: ClubContext,
+    navigate_on_click: bool = True,
+) -> None:
     if not teams:
-        st.info("No teams yet. Create your first team using the Create Team tab.")
+        st.info("No teams yet. Use the **Create Team** tab to add your first team.")
         return
+
+    st.markdown(f"### Teams ({len(teams)})")
+    if navigate_on_click:
+        st.caption("Click a team to view its players. Expand Manage to edit or delete.")
 
     for team in teams:
         players = ctx.get_team_players(team["id"])
@@ -139,12 +157,43 @@ def _render_team_accordions(teams: list[dict], club_id: str, ctx: ClubContext) -
         if player_count > 5:
             player_preview += f" +{player_count - 5} more"
 
-        expander_label = f"🏏 {team['name']} — {player_count} player(s)"
-        if player_preview:
-            expander_label += f" — {player_preview}"
+        if navigate_on_click:
+            open_col, manage_col = st.columns([10, 2])
+            with open_col:
+                button_label = f"🏏 {team['name']} — {player_count} player(s)"
+                if player_preview:
+                    button_label += f" — {player_preview}"
+                if st.button(
+                    button_label,
+                    key=f"open_team_{team['id']}",
+                    use_container_width=True,
+                    type="secondary",
+                ):
+                    navigate_to_players(ctx, club_id, team["id"])
+            with manage_col:
+                manage_key = f"manage_team_visible_{team['id']}"
+                if st.button(
+                    "Manage",
+                    key=f"toggle_manage_{team['id']}",
+                    use_container_width=True,
+                ):
+                    st.session_state[manage_key] = not st.session_state.get(manage_key, False)
+                    st.rerun()
 
-        with st.expander(expander_label, expanded=False):
-            _render_team_details(team, club_id, players, ctx)
+            if players:
+                st.caption(f"Players: {player_preview or '—'}")
+
+            if st.session_state.get(f"manage_team_visible_{team['id']}"):
+                with st.expander(f"Manage {team['name']}", expanded=True):
+                    _render_team_details(team, club_id, players, ctx)
+        else:
+            expander_label = f"🏏 {team['name']} — {player_count} player(s)"
+            if player_preview:
+                expander_label += f" — {player_preview}"
+            with st.expander(expander_label, expanded=False):
+                _render_team_details(team, club_id, players, ctx)
+
+        st.markdown("---")
 
 
 def _render_team_details(team: dict, club_id: str, players: list[dict], ctx: ClubContext) -> None:
