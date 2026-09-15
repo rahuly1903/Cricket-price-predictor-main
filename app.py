@@ -435,6 +435,17 @@ st.markdown("""
     .stButton > button:hover::before {
         left: 100%;
     }
+
+    /* Login tab — orange to stand out from other nav buttons */
+    .st-key-nav_login button {
+        background: linear-gradient(135deg, #E67E22 0%, #FF8C00 100%) !important;
+        box-shadow: 0 8px 20px rgba(230, 126, 34, 0.35) !important;
+    }
+
+    .st-key-nav_login button:hover {
+        background: linear-gradient(135deg, #FF8C00 0%, #FFA500 100%) !important;
+        box-shadow: 0 12px 30px rgba(255, 140, 0, 0.45) !important;
+    }
     
     /* Sample Question Buttons */
     .sample-question-btn {
@@ -689,33 +700,27 @@ if st.session_state.authenticated:
         f"<p style='text-align:right;color:#2E8B57;font-weight:600;'>👤 Logged in as <strong>{st.session_state.username}</strong></p>",
         unsafe_allow_html=True,
     )
-    nav_c1, nav_c2, nav_c3, nav_c4, nav_c5 = st.columns(5)
+    clubs_teams_active = st.session_state.current_page in ("🏟️ Club Management", "🏏 Team Management")
+    nav_c1, nav_c2, nav_c3, nav_c4 = st.columns(4)
     with nav_c1:
-        if st.button("🏟️ Club", key="nav_club", use_container_width=True,
-                     type="primary" if st.session_state.current_page == "🏟️ Club Management" else "secondary"):
+        if st.button("🏟️ Clubs / Teams", key="nav_club", use_container_width=True,
+                     type="primary" if clubs_teams_active else "secondary"):
             set_selected_team_id(None)
             st.session_state.current_page = "🏟️ Club Management"
             st.rerun()
     with nav_c2:
-        if st.button("🏏 Teams", key="nav_teams", use_container_width=True,
-                     type="primary" if st.session_state.current_page == "🏏 Team Management" else "secondary"):
-            set_selected_team_id(None)
-            st.session_state.team_active_tab = "list"
-            st.session_state.current_page = "🏏 Team Management"
-            st.rerun()
-    with nav_c3:
         if st.button("👤 Players", key="nav_players", use_container_width=True,
                      type="primary" if st.session_state.current_page == "👤 Player Management" else "secondary"):
             set_selected_team_id(None)
             st.session_state.player_active_tab = "list"
             st.session_state.current_page = "👤 Player Management"
             st.rerun()
-    with nav_c4:
+    with nav_c3:
         if st.button("🏆 Best XI Team Builder", key="nav3", use_container_width=True,
                      type="primary" if st.session_state.current_page == "🏆 Best XI Team Builder" else "secondary"):
             st.session_state.current_page = "🏆 Best XI Team Builder"
             st.rerun()
-    with nav_c5:
+    with nav_c4:
         if st.button("🚪 Logout", key="nav_logout", use_container_width=True):
             st.session_state.authenticated = False
             st.session_state.user_id = None
@@ -723,7 +728,8 @@ if st.session_state.authenticated:
             st.session_state.current_page = "🤖 Cricket AI Chatbot"
             st.rerun()
 else:
-    nav_c1, nav_c2, nav_c3, nav_c4, nav_c5, nav_c6, nav_c7 = st.columns(7)
+    clubs_teams_active = st.session_state.current_page in ("🏟️ Club Management", "🏏 Team Management")
+    nav_c1, nav_c2, nav_c3, nav_c4, nav_c5, nav_c6 = st.columns(6)
     with nav_c1:
         if st.button("🤖 Cricket AI Chatbot", key="nav1", use_container_width=True,
                      type="primary" if st.session_state.current_page == "🤖 Cricket AI Chatbot" else "secondary"):
@@ -735,17 +741,15 @@ else:
             st.session_state.current_page = "💰 Price Predictor"
             st.rerun()
     with nav_c3:
-        if st.button("🏟️ Club", key="nav_guest_club", use_container_width=True,
-                     type="primary" if st.session_state.current_page == "🏟️ Club Management" else "secondary"):
-            set_selected_team_id(None)
-            st.session_state.current_page = "🏟️ Club Management"
+        if st.button("🏆 Best XI Team Builder", key="nav3", use_container_width=True,
+                     type="primary" if st.session_state.current_page == "🏆 Best XI Team Builder" else "secondary"):
+            st.session_state.current_page = "🏆 Best XI Team Builder"
             st.rerun()
     with nav_c4:
-        if st.button("🏏 Teams", key="nav_guest_teams", use_container_width=True,
-                     type="primary" if st.session_state.current_page == "🏏 Team Management" else "secondary"):
+        if st.button("🏟️ Clubs / Teams", key="nav_guest_club", use_container_width=True,
+                     type="primary" if clubs_teams_active else "secondary"):
             set_selected_team_id(None)
-            st.session_state.team_active_tab = "list"
-            st.session_state.current_page = "🏏 Team Management"
+            st.session_state.current_page = "🏟️ Club Management"
             st.rerun()
     with nav_c5:
         if st.button("👤 Players", key="nav_guest_players", use_container_width=True,
@@ -755,11 +759,6 @@ else:
             st.session_state.current_page = "👤 Player Management"
             st.rerun()
     with nav_c6:
-        if st.button("🏆 Best XI Team Builder", key="nav3", use_container_width=True,
-                     type="primary" if st.session_state.current_page == "🏆 Best XI Team Builder" else "secondary"):
-            st.session_state.current_page = "🏆 Best XI Team Builder"
-            st.rerun()
-    with nav_c7:
         if st.button("🔐 Login", key="nav_login", use_container_width=True,
                      type="primary" if st.session_state.current_page == "🔐 Login" else "secondary"):
             st.session_state.current_page = "🔐 Login"
@@ -1457,10 +1456,7 @@ elif st.session_state.current_page == "🏆 Best XI Team Builder":
         club_teams = all_teams
 
         if not st.session_state.best_xi_source:
-            if all_teams:
-                st.session_state.best_xi_source = ("team", all_teams[0]["id"])
-            else:
-                st.session_state.best_xi_source = ("club", user_clubs[0]["id"])
+            st.session_state.best_xi_source = ("club", user_clubs[0]["id"])
 
         source_type, source_id = st.session_state.best_xi_source
         if source_type == "club":
@@ -1629,7 +1625,7 @@ elif st.session_state.current_page == "🏆 Best XI Team Builder":
                 st.info(f"Loaded **{player_count}** players from **{selected_source_label}**")
             else:
                 st.warning(f"No players found for **{selected_source_label}**. Add players in Player Management.")
-            st.caption("Use **Quick Actions** on the right to load players by club or team.")
+            st.caption("Use **Quick Actions** on the right to load players by club.")
             format_type = st.selectbox(
                 "🏏 Cricket Format",
                 options=TEAM_FORMATS,
@@ -1722,34 +1718,37 @@ elif st.session_state.current_page == "🏆 Best XI Team Builder":
     with col2:
         if use_club_data and user_clubs:
             st.markdown("### ⚡ Quick Actions")
-            st.caption("Load players from a club or team")
+            st.caption("Load players from a club")
 
-            for club in user_clubs:
-                club_player_count = len(xi_ctx.get_club_players(club["id"]))
-                is_club_active = st.session_state.best_xi_source == ("club", club["id"])
-                club_label = f"{'✅ ' if is_club_active else '🏟️ '}{club['name']} ({club_player_count} players)"
-                if st.button(
-                    club_label,
-                    key=f"load_xi_club_{club['id']}",
-                    use_container_width=True,
-                    type="primary" if is_club_active else "secondary",
-                ):
-                    st.session_state.best_xi_source = ("club", club["id"])
-                    st.rerun()
+            club_name_to_id = {club["name"]: club["id"] for club in user_clubs}
+            club_names = [club["name"] for club in user_clubs]
+            active_club_id = user_clubs[0]["id"]
+            source = st.session_state.best_xi_source
+            if source:
+                source_type, source_id = source
+                if source_type == "club" and source_id in club_ids:
+                    active_club_id = source_id
+                elif source_type == "team":
+                    selected_team = next((t for t in club_teams if t["id"] == source_id), None)
+                    if selected_team and selected_team.get("club_id") in club_ids:
+                        active_club_id = selected_team["club_id"]
 
-                club_team_list = [t for t in club_teams if t.get("club_id") == club["id"]]
-                for team in club_team_list:
-                    team_player_count = len(xi_ctx.get_team_players(team["id"]))
-                    is_team_active = st.session_state.best_xi_source == ("team", team["id"])
-                    team_label = f"{'✅ ' if is_team_active else '↳ 🏏'} {team['name']} ({team_player_count})"
-                    if st.button(
-                        team_label,
-                        key=f"load_xi_team_{team['id']}",
-                        use_container_width=True,
-                        type="primary" if is_team_active else "secondary",
-                    ):
-                        st.session_state.best_xi_source = ("team", team["id"])
-                        st.rerun()
+            active_club_name = next(
+                (club["name"] for club in user_clubs if club["id"] == active_club_id),
+                club_names[0],
+            )
+            if st.session_state.get("best_xi_club_dropdown") not in club_names:
+                st.session_state.best_xi_club_dropdown = active_club_name
+
+            selected_club_name = st.selectbox(
+                "Select Club",
+                club_names,
+                key="best_xi_club_dropdown",
+            )
+            selected_club_id = club_name_to_id[selected_club_name]
+            if st.session_state.best_xi_source != ("club", selected_club_id):
+                st.session_state.best_xi_source = ("club", selected_club_id)
+                st.rerun()
         elif not use_club_data:
             st.markdown("### ⚡ Quick Actions")
             
