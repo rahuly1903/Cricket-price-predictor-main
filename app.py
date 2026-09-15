@@ -1625,7 +1625,7 @@ elif st.session_state.current_page == "🏆 Best XI Team Builder":
                 st.info(f"Loaded **{player_count}** players from **{selected_source_label}**")
             else:
                 st.warning(f"No players found for **{selected_source_label}**. Add players in Player Management.")
-            st.caption("Use **Quick Actions** on the right to load players by club.")
+            st.caption("Use **Quick Actions** on the right to load players by club or team.")
             format_type = st.selectbox(
                 "🏏 Cricket Format",
                 options=TEAM_FORMATS,
@@ -1718,36 +1718,39 @@ elif st.session_state.current_page == "🏆 Best XI Team Builder":
     with col2:
         if use_club_data and user_clubs:
             st.markdown("### ⚡ Quick Actions")
-            st.caption("Load players from a club")
+            st.caption("Load players from a club or team")
 
-            club_name_to_id = {club["name"]: club["id"] for club in user_clubs}
-            club_names = [club["name"] for club in user_clubs]
-            active_club_id = user_clubs[0]["id"]
+            option_to_source = {}
+            options = []
+            for club in user_clubs:
+                label = club["name"]
+                options.append(label)
+                option_to_source[label] = ("club", club["id"])
+            for team in club_teams:
+                label = f"{team.get('club_name', '')} — {team['name']}"
+                if label in option_to_source:
+                    label = f"{label} ({team['id'][:8]})"
+                options.append(label)
+                option_to_source[label] = ("team", team["id"])
+
             source = st.session_state.best_xi_source
+            active_label = options[0]
             if source:
-                source_type, source_id = source
-                if source_type == "club" and source_id in club_ids:
-                    active_club_id = source_id
-                elif source_type == "team":
-                    selected_team = next((t for t in club_teams if t["id"] == source_id), None)
-                    if selected_team and selected_team.get("club_id") in club_ids:
-                        active_club_id = selected_team["club_id"]
+                for label, value in option_to_source.items():
+                    if value == tuple(source):
+                        active_label = label
+                        break
+            if st.session_state.get("best_xi_source_dropdown") not in options:
+                st.session_state.best_xi_source_dropdown = active_label
 
-            active_club_name = next(
-                (club["name"] for club in user_clubs if club["id"] == active_club_id),
-                club_names[0],
+            selected_label = st.selectbox(
+                "Select Clubs/Teams",
+                options,
+                key="best_xi_source_dropdown",
             )
-            if st.session_state.get("best_xi_club_dropdown") not in club_names:
-                st.session_state.best_xi_club_dropdown = active_club_name
-
-            selected_club_name = st.selectbox(
-                "Select Club",
-                club_names,
-                key="best_xi_club_dropdown",
-            )
-            selected_club_id = club_name_to_id[selected_club_name]
-            if st.session_state.best_xi_source != ("club", selected_club_id):
-                st.session_state.best_xi_source = ("club", selected_club_id)
+            selected_source = option_to_source[selected_label]
+            if st.session_state.best_xi_source != selected_source:
+                st.session_state.best_xi_source = selected_source
                 st.rerun()
         elif not use_club_data:
             st.markdown("### ⚡ Quick Actions")
